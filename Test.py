@@ -12,5 +12,5 @@ def testF(testStr):
     :param testStr:
     :return:
     """
-    test = "测试"
+    test = testStr
     print(test)
