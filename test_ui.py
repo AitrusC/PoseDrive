@@ -6,10 +6,10 @@
 
 import sys
 from PySide2.QtWidgets import QApplication
-from gui.ui import MainWindow
+from gui.ui import FramelessWindow
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = FramelessWindow()
     window.show()
     sys.exit(app.exec_())
