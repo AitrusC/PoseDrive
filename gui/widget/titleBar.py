@@ -3,11 +3,13 @@
 # FileName: titleBar
 # Time    : 2024-09-12
 # Contact : 906629272@qq.com
+# Description : 标题栏控件
 
 from PySide2.QtGui import *
 from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 from ..Icon import *
+from .widgetT import RoundButton
 
 
 class TitleBar(QWidget):
@@ -29,6 +31,16 @@ class TitleBar(QWidget):
         # 左侧图标
         self.icon_label = QLabel()
         self.icon_label.setPixmap(QIcon(IconPath.TITLEBAR_PATH.value).pixmap(20, 20))
+        self.icon_label.setMouseTracking(True)
+        # 最大化按钮
+        self.max_button = RoundButton(radius = 20, grcolor = (17, 101, 154))
+        self.max_button.clicked.connect(self.__toggleMaxState)
+        # 最小化按钮
+        self.min_button = RoundButton(radius = 20, grcolor = (34, 148, 83))
+        self.min_button.clicked.connect(self.get_parent.showMinimized)
+        # 关闭按钮
+        self.close_button = RoundButton(radius = 20, grcolor = (165, 45, 45))
+        self.close_button.clicked.connect(self.get_parent.close)
         # 布局
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
@@ -36,6 +48,9 @@ class TitleBar(QWidget):
         self.main_layout.setAlignment(Qt.AlignCenter)
         self.main_layout.addWidget(self.icon_label)
         self.main_layout.addStretch(0)
+        self.main_layout.addWidget(self.min_button)
+        self.main_layout.addWidget(self.max_button)
+        self.main_layout.addWidget(self.close_button)
 
     def __toggleMaxState(self):
         """
@@ -122,3 +137,4 @@ class TitleBar(QWidget):
             return False
         # 当鼠标处于标题栏区域时，可拖拽
         return True
+

@@ -3,12 +3,13 @@
 # FileName: ui
 # Time    : 2024-09-09
 # Contact : 906629272@qq.com
+# Description : 主窗口
 
 from PySide2.QtCore import *
 from PySide2.QtGui import *
 from PySide2.QtWidgets import *
 from .widget.titleBar import TitleBar
-
+from .widget.widgetT import RoundButton
 
 
 class FramelessWindow(QWidget):
@@ -17,13 +18,8 @@ class FramelessWindow(QWidget):
     """
     Margins = 5
 
-    def __init__(self, parent = None):
+    def __init__(self, content_widget = None, parent = None):
         QWidget.__init__(self, parent)
-        self.min_size = QSize(1080, 720)
-        self.setObjectName("PoseDriveUI")
-        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Window)
-        self.resize(1080, 720)
-        self.setMinimumSize(self.min_size)
         self.setMouseTracking(True)
 
         self._pressed = False
@@ -31,29 +27,16 @@ class FramelessWindow(QWidget):
         self.gpos = None
 
         # 窗口布局
-        self._createWidgets()
-        self._createLayout()
-        # 事件过滤器
-        self.installEventFilter(self)
-
-    def _createWidgets(self):
-        """
-        创建控件
-        :return:
-        """
-        self.title_bar = TitleBar(self)
-        self.title_bar.windowMoved.connect(self.move)
-
-    def _createLayout(self):
-        """
-        创建布局
-        :return:
-        """
+        title_bar = TitleBar(self)
+        title_bar.windowMoved.connect(self.move)
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.addWidget(self.title_bar)
-        self.main_layout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Fixed, QSizePolicy.Expanding))
+        self.main_layout.setSpacing(0)
+        self.main_layout.addWidget(title_bar)
+        self.main_layout.addWidget(content_widget)
+        # 事件过滤器
+        self.installEventFilter(self)
 
     def paintEvent(self, event):
         """
@@ -63,7 +46,7 @@ class FramelessWindow(QWidget):
         """
         painter = QPainter(self)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(40, 41, 35))
+        painter.setBrush(QColor(31, 38, 35))
         painter.drawRect(self.rect())
         painter.end()
 
@@ -163,6 +146,82 @@ class FramelessWindow(QWidget):
         if "bottom" in self.direction:
             h = event.globalY() - rect.y()
         self.setGeometry(x, y, w, h)
+
+class LeftWidget(QWidget):
+    """
+    左侧窗口
+    """
+
+    def __init__(self, parent = None):
+        QWidget.__init__(self, parent)
+        self.setMouseTracking(True)
+        self.setFixedWidth(250)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        button = RoundButton(radius = 50, grcolor = (34, 148, 83))
+        self.main_layout.addWidget(button)
+
+    def paintEvent(self, event):
+        """
+        绘制背景
+        :param event:
+        :return:
+        """
+        painter = QPainter(self)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(48, 55, 52))
+        painter.drawRect(self.rect())
+        painter.end()
+
+class RightWidget(QWidget):
+    """
+    右侧窗口
+    """
+
+    def __init__(self, parent = None):
+        QWidget.__init__(self, parent)
+        self.setMouseTracking(True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        button = RoundButton(radius = 50, grcolor = (17, 101, 154))
+        self.main_layout.addWidget(button)
+
+class TestWidget(QWidget):
+    """
+    测试窗口
+    """
+
+    def __init__(self, parent = None):
+        QWidget.__init__(self, parent)
+        self.setMouseTracking(True)
+        self.main_layout = QHBoxLayout()
+        self.setLayout(self.main_layout)
+        self.main_layout.setContentsMargins(5, 5, 5, 5)
+        # self.main_layout.setSpacing(5)
+        self.main_layout.setAlignment(Qt.AlignCenter)
+        self.left_widget = LeftWidget()
+        self.right_widget = RightWidget()
+        self.main_layout.addWidget(self.left_widget)
+        self.main_layout.addWidget(self.right_widget)
+
+
+class MainWindow(FramelessWindow):
+    """
+    主窗口
+    """
+
+    def __init__(self, parent = None):
+        test_widget = TestWidget()
+        FramelessWindow.__init__(self, content_widget = test_widget, parent = parent)
+        self.min_size = QSize(1080, 720)
+        self.setObjectName("PoseDriveUI")
+        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Window)
+        self.resize(1080, 720)
+        self.setMinimumSize(self.min_size)
 
 
 def showUI():

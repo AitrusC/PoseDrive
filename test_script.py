@@ -4,7 +4,9 @@
 # Time    : 2024-09-10
 # Contact : 906629272@qq.com
 
-from PyQt5.Qt import *
+from PySide2.QtGui import *
+from PySide2.QtCore import *
+from PySide2.QtWidgets import *
 import sys
 
 class Window(QWidget):
@@ -103,14 +105,114 @@ class MyPushButton(QPushButton):
         self.show()
 
 
+class CollapsibleBox(QWidget):
+    def __init__(self, title="", parent=None):
+        super(CollapsibleBox, self).__init__(parent)
+
+        self.toggle_button = QToolButton(
+            text=title, checkable=True, checked=False
+        )
+        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
+        self.toggle_button.setToolButtonStyle(
+            Qt.ToolButtonTextBesideIcon
+        )
+        self.toggle_button.setArrowType(Qt.RightArrow)
+        self.toggle_button.pressed.connect(self.on_pressed)
+
+        self.toggle_animation = QParallelAnimationGroup(self)
+
+        self.content_area = QScrollArea(
+            maximumHeight=0, minimumHeight=0
+        )
+        self.content_area.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Fixed
+        )
+        self.content_area.setFrameShape(QFrame.NoFrame)
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(0)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.toggle_button)
+        lay.addWidget(self.content_area)
+
+        self.toggle_animation.addAnimation(
+            QPropertyAnimation(self, b"minimumHeight")
+        )
+        self.toggle_animation.addAnimation(
+            QPropertyAnimation(self, b"maximumHeight")
+        )
+        self.toggle_animation.addAnimation(
+            QPropertyAnimation(self.content_area, b"maximumHeight")
+        )
+
+    @Slot()
+    def on_pressed(self):
+        checked = self.toggle_button.isChecked()
+        self.toggle_button.setArrowType(
+            Qt.DownArrow if not checked else Qt.RightArrow
+        )
+        self.toggle_animation.setDirection(
+            QAbstractAnimation.Forward
+            if not checked
+            else QAbstractAnimation.Backward
+        )
+        self.toggle_animation.start()
+
+    def setContentLayout(self, layout):
+        lay = self.content_area.layout()
+        del lay
+        self.content_area.setLayout(layout)
+        collapsed_height = (
+            self.sizeHint().height() - self.content_area.maximumHeight()
+        )
+        content_height = layout.sizeHint().height()
+        for i in range(self.toggle_animation.animationCount()):
+            animation = self.toggle_animation.animationAt(i)
+            animation.setDuration(500)
+            animation.setStartValue(collapsed_height)
+            animation.setEndValue(collapsed_height + content_height)
+
+        content_animation = self.toggle_animation.animationAt(
+            self.toggle_animation.animationCount() - 1
+        )
+        content_animation.setDuration(500)
+        content_animation.setStartValue(0)
+        content_animation.setEndValue(content_height)
 
 
+if __name__ == "__main__":
+    import sys
+    import random
 
-if __name__ == '__main__':
-
-    # 创建一个应用程序对象
     app = QApplication(sys.argv)
 
-    window = Window()
+    w = QMainWindow()
+    w.setCentralWidget(QWidget())
+    dock = QDockWidget("Dock Widget")
+    dock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar)  # 禁止拖动
+    dock.setTitleBarWidget(QWidget())  # 隐藏标题栏
+    w.addDockWidget(Qt.LeftDockWidgetArea, dock)
+    scroll = QScrollArea()
+    dock.setWidget(scroll)
+    content = QWidget()
+    scroll.setWidget(content)
+    scroll.setWidgetResizable(True)
+    vlay = QVBoxLayout(content)
+    for i in range(10):
+        box = CollapsibleBox("Collapsible Box Header-{}".format(i))
+        vlay.addWidget(box)
+        lay = QVBoxLayout()
+        for j in range(8):
+            label = QLabel("{}".format(j))
+            color = QColor(*[random.randint(0, 255) for _ in range(3)])
+            label.setStyleSheet(
+                "background-color: {}; color : white;".format(color.name())
+            )
+            label.setAlignment(Qt.AlignCenter)
+            lay.addWidget(label)
 
+        box.setContentLayout(lay)
+    vlay.addStretch()
+    w.resize(640, 480)
+    w.show()
     sys.exit(app.exec_())
