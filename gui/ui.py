@@ -26,6 +26,10 @@ class FramelessWindow(QWidget):
         self.direction = set()
         self.gpos = None
 
+        # 读取窗口样式
+        with open(__file__ + "/../qss/base.qss", "rb") as f:
+            self.setStyleSheet(f.read().decode("utf-8"))
+
         # 窗口布局
         title_bar = TitleBar(self)
         title_bar.windowMoved.connect(self.move)
@@ -147,6 +151,7 @@ class FramelessWindow(QWidget):
             h = event.globalY() - rect.y()
         self.setGeometry(x, y, w, h)
 
+
 class LeftWidget(QWidget):
     """
     左侧窗口
@@ -157,6 +162,9 @@ class LeftWidget(QWidget):
         self.setMouseTracking(True)
         self.setFixedWidth(250)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        # 读取窗口样式(子类化QWidget后使用QSS不能生效, 需在自定义Widget中重写paintEvent函数以确保QSS的正确应用)
+        # with open(__file__ + "/../qss/leftWidget.qss", "rb") as f:
+        #     self.setStyleSheet(f.read().decode("utf-8"))
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -175,6 +183,7 @@ class LeftWidget(QWidget):
         painter.drawRect(self.rect())
         painter.end()
 
+
 class RightWidget(QWidget):
     """
     右侧窗口
@@ -187,8 +196,10 @@ class RightWidget(QWidget):
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        button = RoundButton(radius = 50, grcolor = (17, 101, 154))
+        button = QLabel("右侧窗口")
+        button.setMouseTracking(True)
         self.main_layout.addWidget(button)
+
 
 class TestWidget(QWidget):
     """
