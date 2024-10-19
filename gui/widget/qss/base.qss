@@ -1,0 +1,52 @@
+QWidget {
+    background-color: transparent;
+    font: bold 10pt "Microsoft YaHei";
+    color: rgb(196, 203, 207);
+}
+SearchLine {
+    background-color: rgb(58, 65, 63);
+    border-radius: 0px;
+    border: 0px solid transparent;
+}
+JPlistWidget {
+    border-radius: 0px;
+    border: 0px solid transparent;
+    padding: 0px;
+}
+QTreeWidget {
+    border-radius: 0px;
+    border: 0px solid transparent;
+    outline: none;
+    padding: 0px;
+}
+QTreeWidget::item {
+    margin: 1px 0;
+}
+QTreeWidget::item:hover {
+    background-color: rgb(58, 65, 63);
+}
+QTreeWidget::item:pressed {
+    background-color: rgb(49, 42, 44);
+}
+QTreeWidget::item:selected {
+    background-color: rgba(53, 60, 58);
+}
+_ToolButton {
+    background-color: rgb(87, 106, 95);
+    border-radius: 5px;
+}
+_ToolButton:hover {
+    background-color: rgb(54, 92, 80);
+}
+_ToolButton:pressed {
+    background-color: rgb(67, 105, 93);
+}
+_ToolButton:checked {
+    background-color: rgb(18, 110, 130);
+}
+_ToolButton:checked:hover {
+    background-color: rgb(54, 92, 80);
+}
+_ToolButton:checked:pressed {
+    background-color: rgb(67, 105, 93);
+}

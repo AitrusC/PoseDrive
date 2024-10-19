@@ -1,218 +1,120 @@
-# -*- coding: UTF-8 -*-
-# Author  : AitrusC
-# FileName: test_script
-# Time    : 2024-09-10
-# Contact : 906629272@qq.com
-
-from PySide2.QtGui import *
 from PySide2.QtCore import *
+from PySide2.QtGui import *
 from PySide2.QtWidgets import *
-import sys
-
-class Window(QWidget):
-    move_Flag = False
-    Window_Width = 1000
-    Window_Length = 1000
-    Window_Title = "Hello"
-    def __init__(self):
-        # 窗体
-        super().__init__()
-        self.setup_ui()
-        self.show()
-
-    def setup_ui(self):
-        self.setWindowTitle(self.Window_Title)
-        self.Title_Button()
-        self.resize(self.Window_Width, self.Window_Length)
-        self.setWindowFlag(Qt.FramelessWindowHint)
-        # self.setWindowIcon(QIcon("43.png"))
-        self.setWindowOpacity(0.9)
 
 
-    # 标题按钮
-    def Title_Button(self):
-        # 关闭按钮
-        self.close_button = MyPushButton(self)
-        self.close_button.setText("关闭")
-        self.close_button.clicked.connect(self.close)
+class CustomButton(QAbstractButton):
+    doubleClicked = Signal()
 
-        # 最大化按钮
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        self.maximize_button = MyPushButton(self)
-        self.maximize_button.setText("最大化")
+        # 设置按钮为可切换
+        self.setCheckable(True)
 
-        # 最大化按钮方法
-        def maximize_method():
-            if window.isMaximized():
-                self.showNormal()
-                self.maximize_button.setText("最大化")
-            else:
-                self.showMaximized()
-                self.maximize_button.setText("恢复")
+        # 按钮状态颜色
+        self.colors = {
+            "normal": QColor(220, 220, 220),
+            "hover": QColor(200, 200, 200),
+            "pressed": QColor(150, 150, 150),
+            "selected": QColor(100, 150, 200)
+        }
 
-        self.maximize_button.clicked.connect(maximize_method)
+        # 鼠标追踪
+        self.setMouseTracking(True)
 
-        # 最小化按钮
+    def setColor(self, state, color):
+        """设置不同状态的颜色"""
+        if state in self.colors:
+            self.colors[state] = QColor(color)
 
-        self.minimize_button = MyPushButton(self)
-        self.minimize_button.setText("最小化")
-        self.minimize_button.clicked.connect(self.showMinimized)
+    def sizeHint(self):
+        """返回按钮的推荐大小"""
+        return QSize(100, 40)
 
-    def resizeEvent(self,evt):
+    def mousePressEvent(self, event):
+        """鼠标按下事件"""
+        if event.button() == Qt.LeftButton:
+            self.update()
 
-        self.close_button_x = self.width() - MyPushButton.btn_width - MyPushButton.side_margin
-        self.close_button.move(self.close_button_x, MyPushButton.top_margin)
+    def mouseReleaseEvent(self, event):
+        """鼠标释放事件"""
+        if event.button() == Qt.LeftButton:
+            # 按钮的选中状态会自动处理
+            self.clicked.emit()
+            self.update()
 
-        self.maximize_button_x = self.close_button_x - MyPushButton.btn_width - MyPushButton.side_margin
-        self.maximize_button.move(self.maximize_button_x, MyPushButton.top_margin)
+    def mouseDoubleClickEvent(self, event):
+        """鼠标双击事件"""
+        if event.button() == Qt.LeftButton:
+            self.doubleClicked.emit()
 
-        self.minimize_button_x = self.maximize_button_x - MyPushButton.btn_width - MyPushButton.side_margin
-        self.minimize_button.move(self.minimize_button_x, MyPushButton.top_margin)
+    def enterEvent(self, event):
+        """鼠标进入事件"""
+        self.update()
 
-# 窗口移动
-    def mousePressEvent(self,evt):
-        # if evt.x() <= self.minimize_button_x and evt.y() <= (MyPushButton.bottom_margin + MyPushButton.btn_height):
-        if evt.x() <= self.minimize_button_x and evt.y() <= 60:
+    def leaveEvent(self, event):
+        """鼠标离开事件"""
+        self.update()
 
-            if evt.button() == Qt.LeftButton:
-                self.move_Flag = True
-                self.window_origin_x = self.x()
-                self.window_origin_y = self.y()
-                self.mouse_origin_x = evt.globalX()
-                self.mouse_origin_y = evt.globalY()
-    def mouseMoveEvent(self, evt):
-        if self.move_Flag:
-            self.mouse_des_x = evt.globalX()
-            self.mouse_des_y = evt.globalY()
-            self.window_des_x = self.window_origin_x + self.mouse_des_x - self.mouse_origin_x
-            self.window_des_y = self.window_origin_y + self.mouse_des_y - self.mouse_origin_y
+    def paintEvent(self, event):
+        """绘制按钮"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
 
-            # 按照向量移动窗口
-            self.move(self.window_des_x,self.window_des_y)
+        # 获取当前状态颜色
+        if self.isDown():
+            bg_color = self.colors["pressed"]
+        elif self.underMouse():
+            bg_color = self.colors["hover"]
+        elif self.isChecked():
+            bg_color = self.colors["selected"]
+        else:
+            bg_color = self.colors["normal"]
 
-    def mouseReleaseEvent(self,evt):
-        self.move_Flag = False
+        # 绘制背景
+        painter.setBrush(bg_color)
+        painter.setPen(Qt.NoPen)
+        painter.drawRect(self.rect())
 
+        # 绘制图标
+        if not self.icon().isNull():
+            icon_size = self.height() - 10
+            icon_rect = QRect(5, (self.height() - icon_size) // 2, icon_size, icon_size)
+            self.icon().paint(painter, icon_rect)
 
-class MyPushButton(QPushButton):
-    btn_width = 160
-    btn_height = 50
-    top_margin = 20
-    side_margin = 10
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
-        self.resize(self.btn_width,self.btn_height)
-        self.show()
+        # 绘制文字
+        painter.setPen(Qt.black)
+        font = QFont()
+        font.setPointSize(12)
+        painter.setFont(font)
 
+        text_x = self.height()  # 让文字在图标右侧
+        painter.drawText(QRect(text_x, 0, self.width() - text_x, self.height()), Qt.AlignVCenter, self.text())
 
-class CollapsibleBox(QWidget):
-    def __init__(self, title="", parent=None):
-        super(CollapsibleBox, self).__init__(parent)
-
-        self.toggle_button = QToolButton(
-            text=title, checkable=True, checked=False
-        )
-        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
-        self.toggle_button.setToolButtonStyle(
-            Qt.ToolButtonTextBesideIcon
-        )
-        self.toggle_button.setArrowType(Qt.RightArrow)
-        self.toggle_button.pressed.connect(self.on_pressed)
-
-        self.toggle_animation = QParallelAnimationGroup(self)
-
-        self.content_area = QScrollArea(
-            maximumHeight=0, minimumHeight=0
-        )
-        self.content_area.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Fixed
-        )
-        self.content_area.setFrameShape(QFrame.NoFrame)
-
-        lay = QVBoxLayout(self)
-        lay.setSpacing(0)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.toggle_button)
-        lay.addWidget(self.content_area)
-
-        self.toggle_animation.addAnimation(
-            QPropertyAnimation(self, b"minimumHeight")
-        )
-        self.toggle_animation.addAnimation(
-            QPropertyAnimation(self, b"maximumHeight")
-        )
-        self.toggle_animation.addAnimation(
-            QPropertyAnimation(self.content_area, b"maximumHeight")
-        )
-
-    @Slot()
-    def on_pressed(self):
-        checked = self.toggle_button.isChecked()
-        self.toggle_button.setArrowType(
-            Qt.DownArrow if not checked else Qt.RightArrow
-        )
-        self.toggle_animation.setDirection(
-            QAbstractAnimation.Forward
-            if not checked
-            else QAbstractAnimation.Backward
-        )
-        self.toggle_animation.start()
-
-    def setContentLayout(self, layout):
-        lay = self.content_area.layout()
-        del lay
-        self.content_area.setLayout(layout)
-        collapsed_height = (
-            self.sizeHint().height() - self.content_area.maximumHeight()
-        )
-        content_height = layout.sizeHint().height()
-        for i in range(self.toggle_animation.animationCount()):
-            animation = self.toggle_animation.animationAt(i)
-            animation.setDuration(500)
-            animation.setStartValue(collapsed_height)
-            animation.setEndValue(collapsed_height + content_height)
-
-        content_animation = self.toggle_animation.animationAt(
-            self.toggle_animation.animationCount() - 1
-        )
-        content_animation.setDuration(500)
-        content_animation.setStartValue(0)
-        content_animation.setEndValue(content_height)
+        painter.end()
 
 
-if __name__ == "__main__":
-    import sys
-    import random
+app = QApplication([])
 
-    app = QApplication(sys.argv)
+window = QWidget()
+layout = QVBoxLayout()
 
-    w = QMainWindow()
-    w.setCentralWidget(QWidget())
-    dock = QDockWidget("Dock Widget")
-    dock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar)  # 禁止拖动
-    dock.setTitleBarWidget(QWidget())  # 隐藏标题栏
-    w.addDockWidget(Qt.LeftDockWidgetArea, dock)
-    scroll = QScrollArea()
-    dock.setWidget(scroll)
-    content = QWidget()
-    scroll.setWidget(content)
-    scroll.setWidgetResizable(True)
-    vlay = QVBoxLayout(content)
-    for i in range(10):
-        box = CollapsibleBox("Collapsible Box Header-{}".format(i))
-        vlay.addWidget(box)
-        lay = QVBoxLayout()
-        for j in range(8):
-            label = QLabel("{}".format(j))
-            color = QColor(*[random.randint(0, 255) for _ in range(3)])
-            label.setStyleSheet(
-                "background-color: {}; color : white;".format(color.name())
-            )
-            label.setAlignment(Qt.AlignCenter)
-            lay.addWidget(label)
+# 创建自定义按钮
+button = CustomButton(text="Click Me", icon=QIcon("C:/Users/AhriLi/Documents/maya/scripts/PoseDrive/gui/icons/plus.png"))
 
-        box.setContentLayout(lay)
-    vlay.addStretch()
-    w.resize(640, 480)
-    w.show()
-    sys.exit(app.exec_())
+# 设置颜色
+button.setColor("normal", QColor(240, 240, 240))
+button.setColor("hover", QColor(200, 200, 200))
+button.setColor("pressed", QColor(150, 150, 150))
+button.setColor("selected", QColor(100, 150, 255))
+
+# 连接信号
+button.clicked.connect(lambda: print("Button clicked!"))
+button.doubleClicked.connect(lambda: print("Button double-clicked!"))
+
+layout.addWidget(button)
+window.setLayout(layout)
+window.show()
+
+app.exec_()
