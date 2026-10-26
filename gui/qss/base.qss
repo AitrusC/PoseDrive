@@ -1,5 +1,0 @@
-QWidget {
-    background-color: rgb(31, 38, 35);
-    font: bold 10pt "Microsoft YaHei";
-    color: rgb(196, 203, 207);
-}
