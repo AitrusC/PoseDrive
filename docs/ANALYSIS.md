@@ -351,9 +351,10 @@ V1 `UVDriveJoint`（2023）保存在 git `313f0b0`，是上一代独立工具，
 ### Phase 0：存档（已完成，剩收尾）
 
 - [x] 提交 1828 行改动 → `40a80e9「重启」`（2026-10-26）
-- [ ] 加 `.gitignore`（`__pycache__/`、`*.pyc`、`.idea/`、`.idea.bak/`）
-- [ ] `git rm -r --cached` 掉已跟踪的 pyc，并清掉索引里暂存的 `A`/`AM` 条目
-- [ ] `git add docs/ gui/icons/*.png`，让分析与图标入库
+- [x] 加 `.gitignore`（`__pycache__/`、`*.pyc`、`.idea/`、`.idea.bak/`）
+- [x] 清掉索引里暂存的 pyc（`git restore --staged`），pyc 不再被跟踪
+- [x] `git add docs/ gui/icons/*.png`，分析与图标入库（`8ec3aa6`）
+- [x] 合并远端旧提交 `5d8a8fc`（ours），推送成功，`origin/master = 5d9f6ed`（2026-10-28）
 - [ ] 打 tag `v0.2-prototype`
 - [ ] 给 `313f0b0` 打 `v0.1-legacy`（只打标签，不恢复代码）
 
