@@ -8,180 +8,54 @@
 from PySide2.QtCore import *
 from PySide2.QtGui import *
 from PySide2.QtWidgets import *
-from .widget.titleBar import TitleBar
-from .widget.widgetT import RoundButton
+
+from .widget.widgetT import FramelessWindow, ListWidget
+try:
+    from ..interface.gui import addPose, pose_list, pose_types, addJoint, joint_types, joint_list, removeJoint, removePose
+except (ImportError, ValueError):
+    # 作为顶层包运行（如 mayapy test_ui.py / main.py）时，.. 会超出顶层包，
+    # Python 3.7+ 抛的是 ValueError 而不是 ImportError，这里一并兜底。
+    from interface.gui import addPose, pose_list, pose_types, addJoint, joint_types, joint_list, removeJoint, removePose
 
 
-class FramelessWindow(QWidget):
+class PoseEditWidget(QWidget):
     """
-    主窗口
+    编辑窗口
     """
-    Margins = 5
 
-    def __init__(self, content_widget = None, parent = None):
+    def __init__(self, pose, parent = None):
+        """
+        初始化
+        :param pose: 关节姿态
+        :param parent:
+        """
         QWidget.__init__(self, parent)
         self.setMouseTracking(True)
-
-        self._pressed = False
-        self.direction = set()
-        self.gpos = None
-
-        # 读取窗口样式
-        with open(__file__ + "/../qss/base.qss", "rb") as f:
-            self.setStyleSheet(f.read().decode("utf-8"))
-
-        # 窗口布局
-        title_bar = TitleBar(self)
-        title_bar.windowMoved.connect(self.move)
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
+        self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setAlignment(Qt.AlignCenter)
         self.main_layout.setSpacing(0)
-        self.main_layout.addWidget(title_bar)
-        self.main_layout.addWidget(content_widget)
-        # 事件过滤器
-        self.installEventFilter(self)
 
-    def paintEvent(self, event):
-        """
-        绘制背景
-        :param event:
-        :return:
-        """
-        painter = QPainter(self)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(31, 38, 35))
-        painter.drawRect(self.rect())
-        painter.end()
+        h_layout = QHBoxLayout()
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setSpacing(5)
 
-    def mousePressEvent(self, event):
-        """
-        鼠标按下事件(拖动窗口, 缩放窗口)
-        :param event:
-        :return:
-        """
-        if event.button() == Qt.LeftButton:
-            self.gpos = event.pos()
-            self._pressed = True
-            rect = self.geometry()
-            side_check = {
-                "left": QRect(rect.x(), rect.y(), self.Margins, rect.height()),
-                "right": QRect(rect.x() + rect.width() - self.Margins, rect.y(), self.Margins, rect.height()),
-                "top": QRect(rect.x(), rect.y(), rect.width(), self.Margins),
-                "bottom": QRect(rect.x(), rect.y() + rect.height() - self.Margins, rect.width(), self.Margins)
-            }
-            self.direction.clear()
-            for side, rect in side_check.items():
-                if rect.contains(event.globalPos()):
-                    self.direction.add(side)
+        v_layout = QVBoxLayout()
+        v_layout.setContentsMargins(0, 0, 0, 0)
+        v_layout.setSpacing(5)
+        v_layout.addWidget(QLabel("关节姿态"))
+        v_layout.addWidget(QLabel("X:"))
 
-    def mouseReleaseEvent(self, event):
-        """
-        鼠标释放事件(结束拖动窗口)
-        :param event:
-        :return:
-        """
-        if event.button() == Qt.LeftButton:
-            self._pressed = False
-            self.direction.clear()
+        h_layout.addWidget(QLabel("Y:"))
+        h_layout.addLayout(v_layout)
+        self.main_layout.addLayout(h_layout)
 
-    def mouseMoveEvent(self, event):
-        """
-        鼠标移动事件(拖动窗口)
-        :param event:
-        :return:
-        """
-        if self.isMaximized() or self.isFullScreen():
-            self.direction.clear()
-            self.setCursor(Qt.ArrowCursor)
-            return
-        if self._pressed:
-            self._resizeWidget(event)
-        # 鼠标移动时, 窗口边缘出现缩放手势
-        # 左上角
-        if event.pos().x() <= self.Margins and event.pos().y() <= self.Margins:
-            self.setCursor(Qt.SizeFDiagCursor)
-        # 右上角
-        elif event.pos().x() >= self.width() - self.Margins and event.pos().y() <= self.Margins:
-            self.setCursor(Qt.SizeBDiagCursor)
-        # 左下角
-        elif event.pos().x() <= self.Margins and event.pos().y() >= self.height() - self.Margins:
-            self.setCursor(Qt.SizeBDiagCursor)
-        # 右下角
-        elif event.pos().x() >= self.width() - self.Margins and event.pos().y() >= self.height() - self.Margins:
-            self.setCursor(Qt.SizeFDiagCursor)
-        # 左侧
-        elif event.pos().x() <= self.Margins:
-            self.setCursor(Qt.SizeHorCursor)
-        # 右侧
-        elif event.pos().x() >= self.width() - self.Margins:
-            self.setCursor(Qt.SizeHorCursor)
-        # 上部
-        elif event.pos().y() <= self.Margins:
-            self.setCursor(Qt.SizeVerCursor)
-        # 下部
-        elif event.pos().y() >= self.height() - self.Margins:
-            self.setCursor(Qt.SizeVerCursor)
-        # 其他位置
-        else:
-            self.setCursor(Qt.ArrowCursor)
-
-    def _resizeWidget(self, event):
-        """
-        窗口缩放事件
-        :param event: 鼠标事件
-        :return:
-        """
-        rect = self.geometry()
-        x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
-        # 点击时的坐标与移动时的坐标差值
-        mpos = event.pos() - self.gpos
-        if "left" in self.direction:
-            if rect.width() - mpos.x() > self.minimumWidth():
-                x += mpos.x()
-                w -= mpos.x()
-        if "right" in self.direction:
-            w = event.globalX() - rect.x()
-        if "top" in self.direction:
-            # print(rect.height(), mpos.y(), rect.height() - mpos.y(), self.minimumHeight())
-            if rect.height() - mpos.y() > self.minimumHeight():
-                y += mpos.y()
-                h -= mpos.y()
-        if "bottom" in self.direction:
-            h = event.globalY() - rect.y()
-        self.setGeometry(x, y, w, h)
-
-
-class LeftWidget(QWidget):
-    """
-    左侧窗口
-    """
-
-    def __init__(self, parent = None):
-        QWidget.__init__(self, parent)
-        self.setMouseTracking(True)
-        self.setFixedWidth(250)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        # 读取窗口样式(子类化QWidget后使用QSS不能生效, 需在自定义Widget中重写paintEvent函数以确保QSS的正确应用)
-        # with open(__file__ + "/../qss/leftWidget.qss", "rb") as f:
-        #     self.setStyleSheet(f.read().decode("utf-8"))
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        button = RoundButton(radius = 50, grcolor = (34, 148, 83))
-        self.main_layout.addWidget(button)
-
-    def paintEvent(self, event):
-        """
-        绘制背景
-        :param event:
-        :return:
-        """
-        painter = QPainter(self)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(48, 55, 52))
-        painter.drawRect(self.rect())
-        painter.end()
+        self.main_layout.addStretch(0)
+        self.pose_list_edit = ListWidget(u"SHAPE列表")
+        self.pose_list_edit.setFixedHeight(240)
+        self.pose_list_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.pose_list_edit.addShapeList()
+        self.main_layout.addWidget(self.pose_list_edit)
 
 
 class RightWidget(QWidget):
@@ -193,15 +67,35 @@ class RightWidget(QWidget):
         QWidget.__init__(self, parent)
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
+        self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        button = QLabel("右侧窗口")
-        button.setMouseTracking(True)
-        self.main_layout.addWidget(button)
+        self.main_layout.setAlignment(Qt.AlignCenter)
+        self.setItem(None)
+
+    def clear(self):
+        """
+        清空右侧窗口
+        :return:
+        """
+        for i in range(self.main_layout.count()):
+            self.main_layout.itemAt(i).widget().deleteLater()
+
+    def setItem(self, pose):
+        """
+        设置右侧窗口显示内容
+        :param pose:
+        :return:
+        """
+        self.clear()
+        if pose:
+            self.main_layout.addWidget(PoseEditWidget(pose))
+        else:
+            select_item_label = QLabel("请选择一个关节姿态")
+            select_item_label.setMouseTracking(True)
+            self.main_layout.addWidget(select_item_label)
 
 
-class TestWidget(QWidget):
+class BodyWidget(QWidget):
     """
     测试窗口
     """
@@ -212,12 +106,76 @@ class TestWidget(QWidget):
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
         self.main_layout.setContentsMargins(5, 5, 5, 5)
-        # self.main_layout.setSpacing(5)
         self.main_layout.setAlignment(Qt.AlignCenter)
-        self.left_widget = LeftWidget()
-        self.right_widget = RightWidget()
+        self.left_widget = ListWidget(u"骨骼与驱动")
+        self.left_widget.addJointPoseList()
+        self.left_widget.add_joint_click.connect(self.addJointAndPose)
+        self.left_widget.delete_joint_click.connect(self.destroyJointAndPose)
+        self.left_widget.on_joint_pressed.connect(self.setPose)
+        self.left_widget.jplist_widget.updateItems(
+            [(i.name(), i.name(), i.icon_path) for i in joint_list]
+            )
+        self.left_widget.jplist_widget.updateChildItems(
+            joint_list[0].name(),
+            [(i.name(), i.name(), i.icon_path) for i in pose_list]
+        )
+        self.left_widget.setFixedWidth(250)
+        self.left_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.right_widget = RightWidget(self)
+        # 测试
+        self.right_widget.setItem(1)
         self.main_layout.addWidget(self.left_widget)
         self.main_layout.addWidget(self.right_widget)
+
+    def addJointAndPose(self, key):
+        """
+        添加关节姿态
+        :return:
+        """
+        if key:
+            print("addChildPose", key)
+            addPose("test_pose")
+            self.left_widget.jplist_widget.updateChildItems(
+                key,
+                [(i.name(), i.name(), i.icon_path) for i in pose_list]
+            )
+        else:
+            print("addPose")
+            addJoint("test_joint")
+            self.left_widget.jplist_widget.updateItems(
+                [(i.name(), i.name(), i.icon_path) for i in joint_list]
+            )
+
+    def setPose(self, key):
+        """
+        设置关节姿态
+        :param key:
+        :return:
+        """
+        print("setPose", key)
+
+    def destroyJointAndPose(self, key):
+        """
+        添加子骨骼
+        :param key:
+        :return:
+        """
+        if key[1]:
+            print("destroyChildPose", key[0], key[1])
+            removePose(key[1])
+            self.left_widget.jplist_widget.updateChildItems(
+                key[0],
+                [(i.name(), i.name(), i.icon_path) for i in pose_list]
+            )
+        else:
+            if key[0]:
+                print("removeChildPose", key[0])
+                removeJoint(key[0])
+                self.left_widget.jplist_widget.updateItems(
+                    [(i.name(), i.name(), i.icon_path) for i in joint_list]
+                )
+
+
 
 
 class MainWindow(FramelessWindow):
@@ -226,11 +184,10 @@ class MainWindow(FramelessWindow):
     """
 
     def __init__(self, parent = None):
-        test_widget = TestWidget()
-        FramelessWindow.__init__(self, content_widget = test_widget, parent = parent)
+        body_widget = BodyWidget()
+        FramelessWindow.__init__(self, content_widget = body_widget, parent = parent)
         self.min_size = QSize(1080, 720)
         self.setObjectName("PoseDriveUI")
-        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Window)
         self.resize(1080, 720)
         self.setMinimumSize(self.min_size)
 
