@@ -88,7 +88,8 @@ class _TitleBar(QWidget):
         # 布局
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(5, 5, 5, 0)
+        # 左右/上的留白由 FramelessWindow 的布局边距提供，这里归零以保持原位
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setAlignment(Qt.AlignCenter)
         self.main_layout.setSpacing(2)
         self.main_layout.addWidget(self.icon_label)
@@ -183,26 +184,9 @@ class _TitleBar(QWidget):
         :param pos:
         :return:
         """
-        # 当鼠标处于左侧边缘时，不可拖拽
-        if pos.x() <= self.Margins:
-            return False
-        # 当鼠标处于右侧边缘时，不可拖拽
-        if pos.x() >= self.width() - self.Margins:
-            return False
-        # 当鼠标处于左上角时，不可拖拽
-        if pos.x() <= self.Margins and pos.y() <= self.Margins:
-            return False
-        # 当鼠标处于右上角时，不可拖拽
-        if pos.x() >= self.width() - self.Margins and pos.y() <= self.Margins:
-            return False
-        # 当鼠标处于上方时，不可拖拽
-        if pos.y() <= self.Margins:
-            return False
-        # 当鼠标超过下方时，不可拖拽
-        if pos.y() > self.height():
-            return False
-        # 当鼠标处于标题栏区域时，可拖拽
-        return True
+        # 边缘热区已由 FramelessWindow 自己拥有（布局四周留出 Margins），
+        # 标题栏内部不再需要排除边缘，整块都可拖拽
+        return 0 <= pos.x() < self.width() and 0 <= pos.y() < self.height()
 
 
 class FramelessWindow(QWidget):
@@ -226,9 +210,12 @@ class FramelessWindow(QWidget):
             self.setStyleSheet(f.read().decode("utf-8"))
 
         # 窗口布局
+        # 四周留出 Margins 作为窗口自己的边缘热区：子控件不再覆盖边缘，
+        # 缩放与光标事件直接落在窗口上，不再依赖子控件 ignore() 后的冒泡
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        m = self.Margins
+        self.main_layout.setContentsMargins(m, m, m, m)
         self.main_layout.setSpacing(0)
         self.bar = _TitleBar(self)
         self.main_layout.addWidget(self.bar)

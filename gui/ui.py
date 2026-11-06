@@ -105,7 +105,8 @@ class BodyWidget(QWidget):
         self.setMouseTracking(True)
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
+        # 留白由 FramelessWindow 的布局边距提供，这里归零避免双重内缩
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setAlignment(Qt.AlignCenter)
         self.left_widget = ListWidget(u"骨骼与驱动")
         self.left_widget.addJointPoseList()

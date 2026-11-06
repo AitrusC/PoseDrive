@@ -264,6 +264,8 @@ drag  +40px     -> geometry: (-1, 0, 1081, 720)   # 被 minimumWidth=1080 夹住
 
 **方法论教训**：判断"事件能不能到达"必须真的把事件发过去（`QTest` + 打桩计数），不能只看 `childAt`。
 
+> 2026-11-06 更新：已按此方案落地（`FramelessWindow` 布局四周留 `Margins`），实测边缘事件直接命中窗口；改动清单见 [CODE_GUIDE.md](CODE_GUIDE.md) 附录。
+
 ---
 
 ## 4. 架构层面的三个根本问题
@@ -330,7 +332,7 @@ pose_list  = []      # 全局，模块级，与 joint 无任何关联
 | 资产 | 评价 |
 |---|---|
 | 视觉规范：深色配色、圆角、三色窗控、图标风格、`base.qss` | 有辨识度，值得保留；但要把 QSS 与 `paintEvent` 的硬编码颜色统一成一份调色板常量 |
-| `FramelessWindow` 的**方向** | 已经改用 `startSystemMove`/`startSystemResize` + 锚点法兜底；边缘缩放、边缘光标、标题栏拖动实测均可用（见 §3.5），待修的只是 5px 热区偏窄、标题栏搜索框区域无法拖动 |
+| `FramelessWindow` 的**方向** | 已改用 `startSystemMove`/`startSystemResize` + 锚点法兜底；2026-11-06 已把边缘热区改为窗口自持（布局留 `Margins`），实测缩放、光标、标题栏拖动均可用；剩余：热区偏窄、标题栏搜索框区域无法拖动 |
 | `RoundButton` / `IconButton` / `_ListItemWidget` 的绘制与状态机 | 代码干净，可直接搬 |
 | `_CollapsibleBox` 的动画方案 | 方案可用，但要改成"单击 + `isChecked()` 驱动"，并去掉 `content_area.destroy()` |
 | `IconPath` 枚举 | 保留，修大小写 |

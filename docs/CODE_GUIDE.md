@@ -1,9 +1,9 @@
 # PoseDrive 代码结构说明
 
-> 对应快照：2026-10-21，工作区当前代码（`widgetT.py` 1317 行、总计 2146 行）
+> 对应快照：2026-11-06，工作区当前代码（`widgetT.py` 1320 行、总计约 2149 行）
 > 用途：重写前的模块/函数级底图 —— 每个模块负责什么、每个函数做什么、谁调用它、现在有什么问题。
 > 配套文档：[ANALYSIS.md](ANALYSIS.md)（缺陷实测与重写路线）。本文只描述"现在是什么"，不重复论证"为什么坏"。
-> 说明：所有行号对应当前快照；**[实测]** 标记的结论来自 Maya 2022 `mayapy` 实际运行。
+> 说明：行号以备份提交 `5df85fb` 为基准，之后做边距改动时有少量漂移；查找时以类名/函数名为准。**[实测]** 标记的结论来自 Maya 2022 `mayapy` 实际运行。
 
 ---
 
@@ -215,7 +215,7 @@ def showUI():
 
 ---
 
-### 2.6 `gui/widget/widgetT.py`（1317 行）——控件库
+### 2.6 `gui/widget/widgetT.py`（1304 行）——控件库
 
 18 个类/函数。`__all__` 只导出 `FramelessWindow` 和 `ListWidget`（`1303`），其余靠模块内引用。
 
@@ -236,22 +236,24 @@ def showUI():
 | 132–144 | `mousePressEvent(event)` | 在可拖拽区按下：记录全局起点与窗口位置 | |
 | 146–169 | `mouseMoveEvent(event)` | 超过拖动阈值后：优先 `windowHandle().startSystemMove()`；不支持则手动 `move()`；最大化时放弃拖动 | Qt ≥5.15 走系统原生 |
 | 171–178 | `mouseReleaseEvent(event)` | 清拖动状态 | |
-| 180–205 | `_isDragRegion(pos)` | 判断点是否在可拖拽区（排除四边 5px 与标题栏外） | 右侧搜索框覆盖的区域会先收到事件 |
+| 181–190 | `_isDragRegion(pos)` | 判断点是否在可拖拽区；边缘热区归窗口后，标题栏内部整块可拖 | 右侧搜索框覆盖的区域会先收到事件 |
 
 **调用关系**：三个圆按钮的 `clicked` 分别连到 `showMinimized` / `__toggleMaxState` / `close`。
 
-#### 2.6.3 `FramelessWindow(QWidget)`（208–350）——无边框主窗
+#### 2.6.3 `FramelessWindow(QWidget)`（192–338）——无边框主窗
 
 | 行 | 方法 | 作用 | 备注 |
 |---|---|---|---|
-| 214–235 | `__init__(content_widget=None, parent=None)` | 加 `FramelessWindowHint` 与 `Window` 两个 flag；读 QSS（`__file__ + "/../qss/base.qss"`）；建 `_TitleBar` + 内容控件 | 路径用字符串拼接 |
-| 237–247 | `paintEvent(event)` | 填充深色背景 `QColor(48,55,52)` | 与 QSS 两套颜色 |
-| 249–264 | `_edge_at(pos)` | 用局部坐标判断命中哪条边，返回 `Qt.Edges` | 逻辑正确；事件会从子控件冒泡上来（见 ANALYSIS §3.4） |
-| 266–286 | `mousePressEvent(event)` | 命中边 → `startSystemResize()`，失败则记录锚点转手动缩放；否则 accept | 事件由 BodyWidget / 标题栏冒泡上来，实测可命中 [实测] |
-| 288–313 | `mouseMoveEvent(event)` | 手动缩放 + 按边设置缩放光标 | 同样冒泡；实测光标可切换到 `SizeHorCursor` |
-| 315–331 | `_fallback_resize(event)` | 锚点法手动缩放（以按下时的 geometry 为基准） | 无累计漂移 |
-| 333–341 | `mouseReleaseEvent(event)` | 清缩放状态 | |
-| 343–350 | `leaveEvent(event)` | 恢复箭头光标 | |
+| 198–222 | `__init__(content_widget=None, parent=None)` | 加 `FramelessWindowHint` 与 `Window`；读 QSS；**布局四周留出 `Margins`**；建 `_TitleBar` + 内容控件 | 路径用字符串拼接 |
+| 224–234 | `paintEvent(event)` | 填充深色背景 `QColor(48,55,52)` | 与 QSS 两套颜色 |
+| 236–251 | `_edge_at(pos)` | 用局部坐标判断命中哪条边，返回 `Qt.Edges` | 边缘热区现在由窗口自己拥有 |
+| 253–273 | `mousePressEvent(event)` | 命中边 → `startSystemResize()`，失败则记录锚点转手动缩放；否则 accept | 直接命中，不再依赖冒泡 |
+| 275–300 | `mouseMoveEvent(event)` | 手动缩放 + 按边设置缩放光标 | 同上 |
+| 302–318 | `_fallback_resize(event)` | 锚点法手动缩放（以按下时的 geometry 为基准） | 无累计漂移 |
+| 320–328 | `mouseReleaseEvent(event)` | 清缩放状态 | |
+| 330–338 | `leaveEvent(event)` | 恢复箭头光标 | |
+
+> 顶部 5px 只用于缩放和光标，不处理双击；双击最大化仍由标题栏主体（`_TitleBar.mouseDoubleClickEvent`）负责。
 
 #### 2.6.4 `RoundButton(QAbstractButton)`（353–453）——圆形按钮
 
@@ -621,3 +623,20 @@ interface.gui.pose_list  ──┘
 | `icons` / `base.qss` | 保留，修大小写与字体 | 资源可用 |
 | `design/*.png` | 保留 | 唯一验收标准 |
 | `test_script.py` | 删除 | 第三方 demo |
+
+---
+
+## 附录：2026-11-06 边距改动
+
+备份提交 `5df85fb` / tag `pre-margin-20261106` 之后，按"边缘热区归窗口自己"改了 5 处：
+
+| 文件 | 改动 | 目的 |
+|---|---|---|
+| `gui/widget/widgetT.py` | `FramelessWindow.__init__`：布局 `ContentsMargins` 改为 `self.Margins` | 让 5px 边缘属于窗口，事件不再依赖冒泡 |
+| 同上 | `_TitleBar._isDragRegion` 简化 | 去掉因旧布局而存在的边缘死区 |
+| 同上 | `_TitleBar` 布局边距 `5,5,5,0` → `0,0,0,0` | 抵消窗口新增的 5px，保持标题栏内容原位 |
+| `gui/ui.py` | `BodyWidget` 布局边距 `5` → `0` | 避免与窗口边距叠加成 10px |
+
+改动后的几何（实测）：标题栏 `(5,5,1070,30)`、BodyWidget `(5,35,1070,680)`；`childAt(2,300)` 返回窗口本身，四边/四角缩放与标题栏拖动均可用。
+
+> 顶部 5px 不做双击最大化（按需求）；双击标题栏主体仍可最大化/还原。
