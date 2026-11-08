@@ -61,7 +61,6 @@ class _TitleBar(QWidget):
     """
     标题栏控件
     """
-    Margins = 5
 
     def __init__(self, parent = None):
         QWidget.__init__(self, parent)
@@ -194,11 +193,14 @@ class FramelessWindow(QWidget):
     主窗口
     """
     Margins = 5
+    Radius = 8
 
     def __init__(self, content_widget = None, parent = None):
         QWidget.__init__(self, parent)
         self.setMouseTracking(True)
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Window)
+        # 方案 A：透明背景 + 抗锯齿路径，实现圆角
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self._resize_edges = 0
         self._resize_press_global = QPoint()
         self._resize_geom = None
@@ -223,14 +225,18 @@ class FramelessWindow(QWidget):
 
     def paintEvent(self, event):
         """
-        绘制背景
+        绘制圆角背景（透明窗口 + 抗锯齿路径，无描边、无阴影）
         :param event:
         :return:
         """
         painter = QPainter(self)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(48, 55, 52))
-        painter.drawRect(self.rect())
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        # 最大化/全屏时用直角，避免贴屏幕边缘出现缺口
+        radius = 0 if (self.isMaximized() or self.isFullScreen()) else self.Radius
+        path = QPainterPath()
+        # 不做描边，路径直接贴边，避免最外圈出现半透明像素
+        path.addRoundedRect(QRectF(self.rect()), radius, radius)
+        painter.fillPath(path, QColor(48, 55, 52))
         painter.end()
 
     def _edge_at(self, pos):
