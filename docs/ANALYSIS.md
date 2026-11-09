@@ -1,8 +1,7 @@
 # PoseDrive 项目分析
 
 > 分析时间：2026-10-21
-> 最近复核：2026-10-28（`40a80e9「重启」` 已提交全部工作区代码；源码自上次分析未变，实测结论继续有效）
-> 分析对象：工作区 `C:\Users\jeff\Documents\maya\scripts\PoseDrive`
+> 分析对象：工作区 `C:\Users\90662\Documents\maya\scripts\PoseDrive`
 > 范围说明：本项目为**全新项目**，不复用 V1（`UVDriveJoint`，2023）的代码或逻辑；V1 只作为设计图右侧旧截图的出处，不参与架构决策。
 > 验证环境：Maya 2022 mayapy（Python 3.7.7 / PySide2 5.15.2 / Qt 5.15.2），离屏跑通 UI
 > 说明：本文结论分两类 —— **[实测]** 表示用 mayapy 真正把代码跑起来观察到的行为；**[源码]** 表示静态阅读得出，未运行验证。
@@ -24,9 +23,9 @@
 | 测试 / 工程化 | 🔴 0：无测试、无 `.gitignore`、`__pycache__` 已入库 |
 | 整体 | **约 12%** |
 
-用 Maya 2022 的 `mayapy` 实跑，窗口能起来，但 §3 的 14 条问题里有 4 条是阻断级：空数据首次运行 `IndexError`、折叠面板动画从未初始化、刷新关节列表后姿态全部丢失、窗口边缘无法缩放。
+用 Maya 2022 的 `mayapy` 实跑，窗口能起来，但 §3 的 13 条问题里有 3 条是阻断级：空数据首次运行 `IndexError`、折叠面板动画从未初始化、刷新关节列表后姿态全部丢失。
 
-**存档风险已解除，但仓库卫生没收尾**：2026-10-26 的 `40a80e9「重启」` 把 1828 行改动全部提交了（含整个 `interface/` 层），代码不会再丢；但至今没有 `.gitignore`，`docs/`、6 张图标仍未跟踪，`__pycache__/*.pyc` 仍在索引里（见 §3.3）。
+**最紧迫的不是重写，是存档**：1828 行改动从未提交（含整个 `interface/` 层），一次 `git checkout .` 就退回 2024 年 10 月的空壳（见 §3.3）。
 
 **建议路线**：保留视觉外壳，换掉列表与数据层，业务层从零设计，分 4 步走（见 §7）。
 
@@ -137,20 +136,9 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 [实测] 刷新后第一个面板的 pose items: 0
 ```
 
-**④ 窗口边缘不能缩放。**
-`FramelessWindow` 在 `mousePressEvent` 里做边缘命中（`widgetT.py:266-286`），但布局 0 边距，`BodyWidget` 铺满了整个客户区。命中测试：
-
-```
-[实测] point (2,300)      -> child: BodyWidget
-[实测] point (1078,400)   -> child: BodyWidget
-[实测] point (400,718)    -> child: BodyWidget
-```
-
-鼠标事件全部落在子控件上，`FramelessWindow` 永远收不到，缩放逻辑和边缘光标形同虚设。同理，标题栏里 `(400,15)` 命中的是 `SearchFunctionWidget` —— 点那里是打开搜索，不是拖窗。
-
 ### 3.2 功能级：语义错、交互断
 
-**⑤ 点姿态，右侧面板不动。**
+**④ 点姿态，右侧面板不动。**
 `BodyWidget.setPose` 只有一句 `print("setPose", key)`（`gui/ui.py:155`）。
 
 ```
@@ -160,7 +148,7 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 
 而且右侧同时存在"请选择一个关节姿态"占位文案和 `PoseEditWidget` —— 因为 `BodyWidget.__init__` 里 `self.right_widget.setItem(1)` 传了个 `int` 当 pose（`gui/ui.py:126`），`if pose:` 成立就渲染了编辑面板。
 
-**⑥ "−" 按钮删的到底是关节还是姿态，取决于看不见的选中态。**
+**⑤ "−" 按钮删的到底是关节还是姿态，取决于看不见的选中态。**
 `ListWidget._sendDeleteJointSignal` 把 `[当前关节, 当前姿态]` 发给 `BodyWidget.destroyJointAndPose`，后者用 `if key[1]` 判断。只要用户没点过姿态行，`key[1]` 就是 `None` → 走删关节分支：
 
 ```
@@ -168,14 +156,14 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 [实测] 直接点 [−] → 打印 "removeChildPose"，实际删掉的是关节，poses 仍然是 2
 ```
 
-**⑦ 删关节不级联，姿态变悬空对象。**
+**⑥ 删关节不级联，姿态变悬空对象。**
 `interface/gui.py:30 removeJoint` 只 `destroy()` 关节本身。`pose_list` 是全局的，姿态不知道自己属于谁：
 
 ```
 [实测] removed '0aefe282'; poses 2 -> 2
 ```
 
-**⑧ 同一个姿态会同时显示在多个关节下。**
+**⑦ 同一个姿态会同时显示在多个关节下。**
 因为 UI 每次渲染子项都直接喂整个 `pose_list`（`gui/ui.py:138-141`）：
 
 ```
@@ -184,10 +172,10 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 [实测] 在 joint1 上点 [+] 后: ['3df5a74b', 'db3a0ece']   # joint0 的姿态跑到 joint1 底下了
 ```
 
-**⑨ 搜索、菜单、全局搜索都是摆设。**
+**⑧ 搜索、菜单、全局搜索都是摆设。**
 `left.search_line` 的 `textChanged` 信号连接数为 0（[实测]），输入 `zzz` 列表毫无变化；标题栏"文件/工具/帮助"三个菜单项是 `Option1/2/3` 的 `print`；全局搜索硬编码 10 条假数据（`widgetT.py:1208-1219`）。
 
-**⑩ 右侧 `clear()` 是延迟生效的，新旧控件会并存。**
+**⑨ 右侧 `clear()` 是延迟生效的，新旧控件会并存。**
 `RightWidget.clear()` 用 `deleteLater()`，在同一轮事件循环内旧控件仍在布局里：
 
 ```
@@ -195,12 +183,12 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 [实测] after flush:         占位 label = 1，PoseEditWidget = 0
 ```
 
-**⑪ 列表重建期间旧控件仍在布局里，而代码用显示文本当主键。**
+**⑩ 列表重建期间旧控件仍在布局里，而代码用显示文本当主键。**
 `_CollapsibleBox.updateItems` 先 `deleteLater` 再 `addItem`，实测 `item_layout.count()` 在刷新后是 `3`（1 旧 + 2 新），不是 2；`_JPlistWidget.updateChildItems` 又是按 `toggle_button.text()` 找面板（`widgetT.py:934-937`）。重名、改名、或刷新时序一错，就会改到"即将被销毁"的那个控件上，动画高度也按含旧项的值计算。
 
 ### 3.3 工程质量
 
-**⑫ "协议"约束不生效。**
+**⑪ "协议"约束不生效。**
 `JointProtocol` 继承 `object` 而不是 `abc.ABC`，`@abstractmethod` 形同注释：
 
 ```
@@ -210,12 +198,17 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 
 而且 `protocol.py` 为了一个返回值类型注解开 `from PySide2.QtWidgets import QWidget`，核心层被 Qt 绑死，无法 headless 测试。
 
-**⑬ 存档已完成，卫生没收尾。**
-2026-10-26 的 `40a80e9「重启」` 一次性提交了 13 个文件、1828 行新增 / 457 行删除，`interface/` 两个核心文件与 +1188 行的 `widgetT.py` 都进了版本库 —— **最大的丢失风险已经解除**。
+**⑫ 最要命的一条：1828 行改动没提交。**
+`git log` 最后一次提交是 `649c993 2024-10-12`，而 `git diff HEAD --stat` 显示 15 个文件、**1828 行新增 / 457 行删除**全部停留在工作区/索引里，其中：
 
-剩下的问题：`git status` 仍有 26 项，其中 `gui/widget/__pycache__/*.pyc` 处于已暂存状态（`A`/`AM`），下次 `git add -A` 会把 pyc 一起提交；`docs/`、`.idea/`、6 张图标仍未跟踪；没有 `.gitignore`。
+- `gui/widget/widgetT.py`：+1188 行（无边框窗、按钮、折叠面板、列表全是未提交状态）
+- `gui/ui.py`：303 行改动
+- `interface/protocol.py`、`interface/gui.py`：全新文件，从未提交
+- `gui/widget/titleBar.py`：已删除但删除动作未提交
 
-**⑭ 其它卫生问题**
+一次 `git checkout .`、`git reset --hard` 或误清工作区，**这个项目就退回 2024-10 的空壳**。`docs/PROJECT_STATUS.md` 里也写了这条风险，但至今没处理。
+
+**⑬ 其它卫生问题**
 
 - `gui/widget/__pycache__/*.pyc` 已被 git 跟踪；根目录有 `__init__.pyc`；没有 `.gitignore`。
 - `gui/icons/__init__.py:16` 写 `titlebar.png`，实际文件是 `titleBar.png` —— Windows 上碰巧能跑，macOS/Linux 的 Maya 上图标丢失。
@@ -236,7 +229,42 @@ QPropertyAnimation::updateState (maximumHeight, _CollapsibleBox, ): starting an 
 | "`ShowUIInMaya(parent=get_host_app())` 默认值导入时求值" | 已改为 `parent=None` 再在函数内求值 |
 | "widgetT 1310 行" | 现 1317 行 |
 
-同时它漏掉了我这次实测出来的 6 个更严重的问题（①②③④⑤⑥⑦⑧⑨⑩⑪ 中的多数）。
+同时它漏掉了本次实测出的多数问题（§3.1–§3.3）。
+
+### 3.5 更正：边缘缩放与窗口拖动其实可用
+
+上一版分析把"窗口边缘不能缩放"列为阻断级问题，**这个结论是错的**。原因和实测结果记录在这里，避免重复踩坑。
+
+当时的判断方法是 `w.childAt(QPoint(2, 300))`，看到返回 `BodyWidget` 就认定"事件到不了 `FramelessWindow`"。但 `childAt` 只回答"光标下面是哪个控件"，不回答"事件会不会继续向上传"。
+
+Qt 的鼠标事件分发规则：事件先给光标下的控件；如果它没有 `accept()`（`QWidget` 默认实现会 `ignore()`），Qt 会把**坐标平移后**继续传给父控件，直到某个控件接受或到达窗口。`BodyWidget` 没有重写 `mousePressEvent`，`_TitleBar` 在非拖拽区也是 `ignore()`，所以（实测）：
+
+```
+press at body(2,270)     →  FramelessWindow.mousePressEvent(2, 300)  edges=LeftEdge
+press at titlebar(400,2) →  FramelessWindow.mousePressEvent(400, 2)  edges=TopEdge
+move  over edge          →  cursor = SizeHorCursor
+```
+
+拖动窗口的实测（离屏环境走 `_fallback_resize` 回退分支）：
+
+```
+start geometry: (0, 0, 1080, 720)
+press left edge -> _resize_edges: 2
+drag  +40px     -> geometry: (-1, 0, 1081, 720)   # 被 minimumWidth=1080 夹住
+```
+
+宽度只变了 1px，是因为 `MainWindow.setMinimumSize(1080, 720)`：从左边缘向右拖是"缩小"，被最小值挡住；向左拖才会变大。这恰好证明 `_fallback_resize` 真的执行了 `setGeometry`。标题栏拖动也验证过：窗口从 `(0,0)` 移到 `(40,30)`。
+
+**修正后的结论**：
+
+- ✅ 四边与四角缩放可用；`startSystemResize`（Qt 5.15+）与锚点法回退都正常。
+- ✅ 边缘光标切换可用（`mouseMoveEvent` 同样会冒泡）。
+- ✅ 标题栏空白处拖动可用。
+- ⚠️ 剩余的小问题：可抓取带只有 5px，偏窄；顶部热区落在标题栏自身的 5px 留白里；标题栏的搜索框区域会拦截按下事件，不能从那里拖窗。
+
+**方法论教训**：判断"事件能不能到达"必须真的把事件发过去（`QTest` + 打桩计数），不能只看 `childAt`。
+
+> 2026-11-06 更新：已按此方案落地（`FramelessWindow` 布局四周留 `Margins`），实测边缘事件直接命中窗口；改动清单见 [CODE_GUIDE.md](CODE_GUIDE.md) 附录。
 
 ---
 
@@ -276,7 +304,7 @@ pose_list  = []      # 全局，模块级，与 joint 无任何关联
 
 | # | 功能 | 设计图 | 现状 | 判定 |
 |---|---|---|---|---|
-| 1 | 无边框窗 / 标题栏 / 拖动 | ✓ | `FramelessWindow`（拖动仅标题栏空白处可用） | 🟡 |
+| 1 | 无边框窗 / 标题栏 / 拖动 / 缩放 | ✓ | `FramelessWindow` + `_TitleBar`（实测可用，热区 5px） | 🟢 |
 | 2 | 左栏关节列表 | ✓ | `_JPlistWidget` + 折叠面板 | 🟡 |
 | 3 | 展开显示该关节的姿态 | ✓ | 会丢子项、会串姿态 | 🔴 |
 | 4 | 添加/删除关节、姿态 | ✓ | 能点，删除语义错、不级联 | 🔴 |
@@ -304,7 +332,7 @@ pose_list  = []      # 全局，模块级，与 joint 无任何关联
 | 资产 | 评价 |
 |---|---|
 | 视觉规范：深色配色、圆角、三色窗控、图标风格、`base.qss` | 有辨识度，值得保留；但要把 QSS 与 `paintEvent` 的硬编码颜色统一成一份调色板常量 |
-| `FramelessWindow` 的**方向** | 已经改用 `startSystemMove`/`startSystemResize` + 锚点法兜底，思路正确；只需修边缘命中（§3.1④） |
+| `FramelessWindow` 的**方向** | 已改用 `startSystemMove`/`startSystemResize` + 锚点法兜底；2026-11-06 已把边缘热区改为窗口自持（布局留 `Margins`），实测缩放、光标、标题栏拖动均可用；剩余：热区偏窄、标题栏搜索框区域无法拖动 |
 | `RoundButton` / `IconButton` / `_ListItemWidget` 的绘制与状态机 | 代码干净，可直接搬 |
 | `_CollapsibleBox` 的动画方案 | 方案可用，但要改成"单击 + `isChecked()` 驱动"，并去掉 `content_area.destroy()` |
 | `IconPath` 枚举 | 保留，修大小写 |
@@ -348,17 +376,14 @@ V1 `UVDriveJoint`（2023）保存在 git `313f0b0`，是上一代独立工具，
 
 原则：**先存档，再立模型，最后做界面**。不要在旧控件库里继续打补丁 —— §3 里 6 个 UI bug 有 4 个源于同一套"widget-per-row + deleteLater + 文本主键"的设计，逐个修的成本高于换模型/视图。
 
-### Phase 0：存档（已完成，剩收尾）
+### Phase 0：存档（30 分钟，今天就能做）
 
-- [x] 提交 1828 行改动 → `40a80e9「重启」`（2026-10-26）
-- [x] 加 `.gitignore`（`__pycache__/`、`*.pyc`、`.idea/`、`.idea.bak/`）
-- [x] 清掉索引里暂存的 pyc（`git restore --staged`），pyc 不再被跟踪
-- [x] `git add docs/ gui/icons/*.png`，分析与图标入库（`8ec3aa6`）
-- [x] 合并远端旧提交 `5d8a8fc`（ours），推送成功，`origin/master = 5d9f6ed`（2026-10-28）
-- [ ] 打 tag `v0.2-prototype`
-- [ ] 给 `313f0b0` 打 `v0.1-legacy`（只打标签，不恢复代码）
+1. `git add -A` 提交当前 1828 行改动（先加 `.gitignore` 排除 `__pycache__`/`.idea`/`*.pyc`）。
+2. 打 tag `v0.2-prototype`。
+3. 给 V1 的提交 `313f0b0` **只打一个历史标签** `git tag v0.1-legacy 313f0b0`，**不把代码恢复到工作区** —— 需要考古时 `git show v0.1-legacy:V1/...` 即可。
+4. 保留 `docs/PROJECT_STATUS.md`，以本文档替代其过期结论。
 
-**验收**：`git status` 干净；`git ls-files` 里没有 `.pyc`；`docs/` 与 6 张图标已被跟踪。
+**验收**：`git status` 干净；`git tag` 只有两个新标签；工作区不新增 `legacy/` 目录。
 
 ### Phase 1：骨架 + 模型（1–2 天）
 
@@ -432,7 +457,7 @@ class Project:
 ### Phase 4：工程化（3–5 天）
 
 - JSON 工程文件（带 `version` 与迁移函数）+ 自动保存。
-- `pytest` + `pytest-qt`（offscreen）回归；把本文 §3.1/§3.2 的 11 条问题各写成一个测试。
+- `pytest` + `pytest-qt`（offscreen）回归；把本文 §3.1/§3.2 的 10 条问题各写成一个测试。
 - 打包：`.mod` + 用户脚本目录 + 货架按钮。
 - （可选）Maya 2025+ 的 PySide6 兼容验证。
 

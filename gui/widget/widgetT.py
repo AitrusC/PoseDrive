@@ -61,7 +61,6 @@ class _TitleBar(QWidget):
     """
     标题栏控件
     """
-    Margins = 5
 
     def __init__(self, parent = None):
         QWidget.__init__(self, parent)
@@ -88,7 +87,8 @@ class _TitleBar(QWidget):
         # 布局
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(5, 5, 5, 0)
+        # 左右/上的留白由 FramelessWindow 的布局边距提供，这里归零以保持原位
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setAlignment(Qt.AlignCenter)
         self.main_layout.setSpacing(2)
         self.main_layout.addWidget(self.icon_label)
@@ -183,26 +183,9 @@ class _TitleBar(QWidget):
         :param pos:
         :return:
         """
-        # 当鼠标处于左侧边缘时，不可拖拽
-        if pos.x() <= self.Margins:
-            return False
-        # 当鼠标处于右侧边缘时，不可拖拽
-        if pos.x() >= self.width() - self.Margins:
-            return False
-        # 当鼠标处于左上角时，不可拖拽
-        if pos.x() <= self.Margins and pos.y() <= self.Margins:
-            return False
-        # 当鼠标处于右上角时，不可拖拽
-        if pos.x() >= self.width() - self.Margins and pos.y() <= self.Margins:
-            return False
-        # 当鼠标处于上方时，不可拖拽
-        if pos.y() <= self.Margins:
-            return False
-        # 当鼠标超过下方时，不可拖拽
-        if pos.y() > self.height():
-            return False
-        # 当鼠标处于标题栏区域时，可拖拽
-        return True
+        # 边缘热区已由 FramelessWindow 自己拥有（布局四周留出 Margins），
+        # 标题栏内部不再需要排除边缘，整块都可拖拽
+        return 0 <= pos.x() < self.width() and 0 <= pos.y() < self.height()
 
 
 class FramelessWindow(QWidget):
@@ -210,11 +193,14 @@ class FramelessWindow(QWidget):
     主窗口
     """
     Margins = 5
+    Radius = 8
 
     def __init__(self, content_widget = None, parent = None):
         QWidget.__init__(self, parent)
         self.setMouseTracking(True)
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Window)
+        # 方案 A：透明背景 + 抗锯齿路径，实现圆角
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self._resize_edges = 0
         self._resize_press_global = QPoint()
         self._resize_geom = None
@@ -226,24 +212,31 @@ class FramelessWindow(QWidget):
             self.setStyleSheet(f.read().decode("utf-8"))
 
         # 窗口布局
-        title_bar = _TitleBar(self)
+        # 四周留出 Margins 作为窗口自己的边缘热区：子控件不再覆盖边缘，
+        # 缩放与光标事件直接落在窗口上，不再依赖子控件 ignore() 后的冒泡
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        m = self.Margins
+        self.main_layout.setContentsMargins(m, m, m, m)
         self.main_layout.setSpacing(0)
-        self.main_layout.addWidget(title_bar)
+        self.bar = _TitleBar(self)
+        self.main_layout.addWidget(self.bar)
         self.main_layout.addWidget(content_widget)
 
     def paintEvent(self, event):
         """
-        绘制背景
+        绘制圆角背景（透明窗口 + 抗锯齿路径，无描边、无阴影）
         :param event:
         :return:
         """
         painter = QPainter(self)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(48, 55, 52))
-        painter.drawRect(self.rect())
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        # 最大化/全屏时用直角，避免贴屏幕边缘出现缺口
+        radius = 0 if (self.isMaximized() or self.isFullScreen()) else self.Radius
+        path = QPainterPath()
+        # 不做描边，路径直接贴边，避免最外圈出现半透明像素
+        path.addRoundedRect(QRectF(self.rect()), radius, radius)
+        painter.fillPath(path, QColor(48, 55, 52))
         painter.end()
 
     def _edge_at(self, pos):
