@@ -5,6 +5,8 @@
 # Contact : 906629272@qq.com
 # Description : 自定义控件模板
 
+import os
+
 from PySide2.QtCore import *
 from PySide2.QtGui import *
 from PySide2.QtWidgets import *
@@ -207,8 +209,8 @@ class FramelessWindow(QWidget):
         if content_widget is None:
             content_widget = QWidget()
 
-        # 读取窗口样式
-        with open(__file__ + "/../qss/base.qss", "rb") as f:
+        qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qss", "base.qss")
+        with open(qss_path, "rb") as f:
             self.setStyleSheet(f.read().decode("utf-8"))
 
         # 窗口布局
