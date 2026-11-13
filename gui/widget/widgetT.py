@@ -86,6 +86,9 @@ class _TitleBar(QWidget):
         # 关闭按钮
         self.close_button = RoundButton(radius = 20, grcolor = (165, 45, 45))
         self.close_button.clicked.connect(self.get_parent.close)
+        self.min_button.setToolTip("最小化")
+        self.max_button.setToolTip("最大化 / 还原")
+        self.close_button.setToolTip("关闭")
         # 布局
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
@@ -96,14 +99,22 @@ class _TitleBar(QWidget):
         self.main_layout.addWidget(self.icon_label)
         self.main_layout.addSpacing(3)
         # 菜单按钮
+        self._expanded_widgets = []
         for i in ["文件", "工具", "帮助"]:
             menu_button = MenuButton(i)
             menu_button.addOption("Option1", func = lambda: print("Option1"))
             menu_button.addOption("Option2", IconPath.BLENDSHAPE_PATH.value, func = lambda: print("Option2"))
             menu_button.addOption("Option3", IconPath.BLENDSHAPE_PATH.value, func = lambda: print("Option3"))
             self.main_layout.addWidget(menu_button)
+            self._expanded_widgets.append(menu_button)
 
-        self.main_layout.addWidget(SearchFunctionWidget(self))
+        search_widget = SearchFunctionWidget(self)
+        self.main_layout.addWidget(search_widget)
+        self._expanded_widgets.append(search_widget)
+        self.compact_label = QLabel("PoseDrive", self)
+        self.compact_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.main_layout.addWidget(self.compact_label)
+        self.compact_label.hide()
         self.main_layout.addStretch(0)
         self.main_layout.addWidget(self.min_button)
         self.main_layout.addSpacing(2)
@@ -111,12 +122,21 @@ class _TitleBar(QWidget):
         self.main_layout.addSpacing(2)
         self.main_layout.addWidget(self.close_button)
 
+    def setCompact(self, compact):
+        """收起时只保留工具名和窗口按钮，避免完整菜单挤掉还原按钮。"""
+        for widget in self._expanded_widgets:
+            widget.setVisible(not compact)
+        self.compact_label.setVisible(compact)
+        self.min_button.setToolTip("还原" if compact else "最小化")
+
     def __toggleMaxState(self):
         """
         切换最大化状态
         :return:
         """
-        if self.get_parent.isMaximized():
+        if self.get_parent.isCompact():
+            self.get_parent.restoreWindow()
+        elif self.get_parent.isMaximized():
             self.get_parent.showNormal()
         else:
             self.get_parent.showMaximized()
@@ -206,8 +226,10 @@ class FramelessWindow(QWidget):
         self._resize_edges = 0
         self._resize_press_global = QPoint()
         self._resize_geom = None
+        self._compact_state = None
         if content_widget is None:
             content_widget = QWidget()
+        self.content_widget = content_widget
 
         qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qss", "base.qss")
         with open(qss_path, "rb") as f:
@@ -224,6 +246,71 @@ class FramelessWindow(QWidget):
         self.bar = _TitleBar(self)
         self.main_layout.addWidget(self.bar)
         self.main_layout.addWidget(content_widget)
+
+    def isCompact(self):
+        return self._compact_state is not None
+
+    def showMinimized(self):
+        """Maya 的有主窗口浮窗使用可还原标题条，独立窗口仍原生最小化。"""
+        if self.isCompact():
+            self.restoreWindow()
+            return
+        if self.parentWidget() is None:
+            QWidget.showMinimized(self)
+            return
+
+        # 原生最小化会缩小 Windows 的窗口区域，但不缩小 Qt 的客户区布局。
+        # 无边框窗口因此只露出左侧菜单，右端的还原/关闭按钮被裁掉。
+        self._compact_state = (
+            self.saveGeometry(), QSize(self.minimumSize()), QSize(self.maximumSize()),
+            self.main_layout.sizeConstraint(), self.content_widget.isHidden(),
+        )
+        self._resize_edges = 0
+        self._resize_geom = None
+        self.bar._drag_armed = False
+        self.setCursor(Qt.ArrowCursor)
+        if self.isMaximized() or self.isFullScreen():
+            QWidget.showNormal(self)
+        self.main_layout.setSizeConstraint(QLayout.SetNoConstraint)
+        self.content_widget.hide()
+        self.bar.setCompact(True)
+        self.setFixedSize(260, self.bar.height() + self.Margins * 2)
+
+        host = self.parentWidget().window()
+        position = host.mapToGlobal(QPoint(self.Margins,
+                                          host.height() - self.height() - self.Margins))
+        # 用宿主的实际桌面坐标定位屏幕。Maya 包装窗口的 QWindow.screen()
+        # 可能仍指向另一块屏幕，按它裁剪会把标题条强行移到副屏。
+        screen = QApplication.screenAt(host.mapToGlobal(host.rect().center()))
+        if screen is None:
+            screen = QApplication.screenAt(position) or QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            position.setX(max(available.left(), min(position.x(), available.right() - self.width() + 1)))
+            position.setY(max(available.top(), min(position.y(), available.bottom() - self.height() + 1)))
+        self.move(position)
+        self.show()
+
+    def restoreWindow(self):
+        """恢复原窗口状态及控件，不重新创建业务面板。"""
+        if not self.isCompact():
+            return
+        geometry, minimum, maximum, constraint, content_hidden = self._compact_state
+        self._compact_state = None
+        self.setMinimumSize(minimum)
+        self.setMaximumSize(maximum)
+        self.bar.setCompact(False)
+        self.content_widget.setVisible(not content_hidden)
+        self.main_layout.setSizeConstraint(constraint)
+        self.restoreGeometry(geometry)
+
+    def showNormal(self):
+        self.restoreWindow()
+        QWidget.showNormal(self)
+
+    def showMaximized(self):
+        self.restoreWindow()
+        QWidget.showMaximized(self)
 
     def paintEvent(self, event):
         """
@@ -248,6 +335,8 @@ class FramelessWindow(QWidget):
         :return: Qt.Edges
         """
         edges = Qt.Edges()
+        if self.isCompact():
+            return edges
         if pos.x() <= self.Margins:
             edges |= Qt.LeftEdge
         if pos.x() >= self.width() - self.Margins:
@@ -985,7 +1074,9 @@ class _ShapeListWidget(QScrollArea):
 
 
 class ListWidget(QWidget):
+    """
 
+    """
     on_pressed = Signal(str)
     on_joint_pressed = Signal(list)
     add_click = Signal()
