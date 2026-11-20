@@ -10,12 +10,7 @@ from PySide2.QtGui import *
 from PySide2.QtWidgets import *
 
 from .widget.widgetT import FramelessWindow, ListWidget
-try:
-    from ..interface.gui import addPose, pose_list, pose_types, addJoint, joint_types, joint_list, removeJoint, removePose
-except (ImportError, ValueError):
-    # 作为顶层包运行（如 mayapy test_ui.py / main.py）时，.. 会超出顶层包，
-    # Python 3.7+ 抛的是 ValueError 而不是 ImportError，这里一并兜底。
-    from interface.gui import addPose, pose_list, pose_types, addJoint, joint_types, joint_list, removeJoint, removePose
+from .preview_data import JointPosePreviewData
 
 
 class PoseEditWidget(QWidget):
@@ -77,8 +72,10 @@ class RightWidget(QWidget):
         清空右侧窗口
         :return:
         """
-        for i in range(self.main_layout.count()):
-            self.main_layout.itemAt(i).widget().deleteLater()
+        while self.main_layout.count():
+            widget = self.main_layout.takeAt(0).widget()
+            widget.hide()
+            widget.deleteLater()
 
     def setItem(self, pose):
         """
@@ -96,87 +93,78 @@ class RightWidget(QWidget):
 
 
 class BodyWidget(QWidget):
-    """
-    测试窗口
-    """
+    """UI 预览：只操作注入的测试数据，不访问 Maya 场景。"""
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None, data=None):
         QWidget.__init__(self, parent)
+        self.data = data if data is not None else JointPosePreviewData()
         self.setMouseTracking(True)
-        self.main_layout = QHBoxLayout()
-        self.setLayout(self.main_layout)
-        # 留白由 FramelessWindow 的布局边距提供，这里归零避免双重内缩
+        self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setAlignment(Qt.AlignCenter)
         self.left_widget = ListWidget(u"骨骼与驱动")
         self.left_widget.addJointPoseList()
-        self.left_widget.add_joint_click.connect(self.addJointAndPose)
-        self.left_widget.delete_joint_click.connect(self.destroyJointAndPose)
-        self.left_widget.on_joint_pressed.connect(self.setPose)
-        self.left_widget.jplist_widget.updateItems(
-            [(i.name(), i.name(), i.icon_path) for i in joint_list]
-            )
-        self.left_widget.jplist_widget.updateChildItems(
-            joint_list[0].name(),
-            [(i.name(), i.name(), i.icon_path) for i in pose_list]
-        )
+        self.left_widget.add_joint_click.connect(self.addJointCollection)
+        self.left_widget.add_pose_click.connect(self.addPoseToCollection)
+        self.left_widget.delete_joint_click.connect(self.removeSelectedItem)
+        self.left_widget.selection_changed.connect(self.setPose)
+        self.left_widget._add_button.setEnabled(self.data.joint_factory is not None)
         self.left_widget.setFixedWidth(250)
         self.left_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.right_widget = RightWidget(self)
-        # 测试
-        self.right_widget.setItem(1)
         self.main_layout.addWidget(self.left_widget)
         self.main_layout.addWidget(self.right_widget)
+        self.refreshCollections()
 
-    def addJointAndPose(self, key):
-        """
-        添加关节姿态
-        :return:
-        """
-        if key:
-            print("addChildPose", key)
-            addPose("test_pose")
+    def _syncCollectionHeaders(self):
+        listing = self.left_widget.jplist_widget
+        listing.updateItems(self.data.jointRows())
+        for box in listing._items_by_key.values():
+            box.add_pose_button.setEnabled(self.data.pose_factory is not None)
+
+    def refreshCollections(self):
+        """手动修改测试数据后可刷新；保留仍然有效的选择及展开状态。"""
+        self._syncCollectionHeaders()
+        listing = self.left_widget.jplist_widget
+        for key in self.data.joints:
+            listing.updateChildItems(key, self.data.poseRows(key))
+        joint_key = self.left_widget._now_joint_key
+        pose_key = self.left_widget._now_joint_child_key
+        if joint_key not in self.data.joints:
+            joint_key, pose_key = None, None
+        elif pose_key not in self.data.joints[joint_key]["poses"]:
+            pose_key = None
+        self.left_widget.setSelection(joint_key, pose_key)
+
+    def addJointCollection(self):
+        key = self.data.addJoint()
+        if key is not None:
+            self._syncCollectionHeaders()
+            self.left_widget.setSelection(key)
+            listing = self.left_widget.jplist_widget
+            listing.ensureWidgetVisible(listing._items_by_key[key])
+
+    def addPoseToCollection(self, joint_key):
+        pose_key = self.data.addPose(joint_key)
+        if pose_key is None:
+            return
+        listing = self.left_widget.jplist_widget
+        listing.updateChildItems(joint_key, self.data.poseRows(joint_key))
+        listing._items_by_key[joint_key].setExpanded(True)
+        self.left_widget.setSelection(joint_key, pose_key)
+
+    def setPose(self, selection):
+        self.right_widget.setItem(self.data.pose(*selection))
+
+    def removeSelectedItem(self, selection):
+        joint_key, pose_key = selection
+        self.data.remove(joint_key, pose_key)
+        if joint_key in self.data.joints:
             self.left_widget.jplist_widget.updateChildItems(
-                key,
-                [(i.name(), i.name(), i.icon_path) for i in pose_list]
-            )
+                joint_key, self.data.poseRows(joint_key))
+            self.left_widget.setSelection(joint_key)
         else:
-            print("addPose")
-            addJoint("test_joint")
-            self.left_widget.jplist_widget.updateItems(
-                [(i.name(), i.name(), i.icon_path) for i in joint_list]
-            )
-
-    def setPose(self, key):
-        """
-        设置关节姿态
-        :param key:
-        :return:
-        """
-        print("setPose", key)
-
-    def destroyJointAndPose(self, key):
-        """
-        添加子骨骼
-        :param key:
-        :return:
-        """
-        if key[1]:
-            print("destroyChildPose", key[0], key[1])
-            removePose(key[1])
-            self.left_widget.jplist_widget.updateChildItems(
-                key[0],
-                [(i.name(), i.name(), i.icon_path) for i in pose_list]
-            )
-        else:
-            if key[0]:
-                print("removeChildPose", key[0])
-                removeJoint(key[0])
-                self.left_widget.jplist_widget.updateItems(
-                    [(i.name(), i.name(), i.icon_path) for i in joint_list]
-                )
-
-
+            self._syncCollectionHeaders()
+            self.left_widget.setSelection()
 
 
 class MainWindow(FramelessWindow):
@@ -184,8 +172,8 @@ class MainWindow(FramelessWindow):
     主窗口
     """
 
-    def __init__(self, parent = None):
-        body_widget = BodyWidget()
+    def __init__(self, parent = None, data = None):
+        body_widget = BodyWidget(data=data)
         FramelessWindow.__init__(self, content_widget = body_widget, parent = parent)
         self.min_size = QSize(1080, 720)
         self.setObjectName("PoseDriveUI")

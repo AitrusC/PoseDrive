@@ -46,3 +46,39 @@ _MenuWidget {
 _MenuWidget::item::selected {
     background-color: rgb(55, 62, 59);
 }
+
+
+/* 垂直滚动条：轨道 */
+QScrollBar:vertical {
+    background: rgb(45, 53, 49);
+    width: 10px;
+    margin: 0px;
+    border: none;
+    border-radius: 4px;
+}
+
+/* 可拖动的滑块 */
+QScrollBar::handle:vertical {
+    background: rgb(87, 106, 95);
+    min-height: 24px;
+    border-radius: 4px;
+}
+
+/* 隐藏上下两端的按钮 */
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+    border: none;
+    background: transparent;
+}
+
+QScrollBar::up-arrow:vertical,
+QScrollBar::down-arrow:vertical {
+    image: none;
+}
+
+/* 滑块上方、下方的轨道区域 */
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}

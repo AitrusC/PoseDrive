@@ -4,7 +4,7 @@
 # Time    : 2024-11-03
 # Contact : 906629272@qq.com
 """
-定义POSE与SHAPE的通信协议
+POSE与SHAPE的通信协议
 """
 
 from abc import abstractmethod

@@ -646,170 +646,158 @@ class SearchLine(QLineEdit):
 
 
 class _ToolButton(QPushButton):
-    """
-    工具按钮控件
-    """
-    doubleClicked = Signal(bool)
+    """标题按钮只发送交互事件，展开状态由折叠面板管理。"""
+    doubleClicked = Signal()
 
-    def __init__(self, parent = None):
-        """
-        初始化工具按钮控件
-        :param parent: 父控件
-        """
-        QPushButton.__init__(self, parent)
-        self._double_click = False
+    def __init__(self, text = "", parent = None):
+        QPushButton.__init__(self, text, parent)
         self.setMouseTracking(True)
         self.setCheckable(True)
         self.setFixedHeight(25)
 
     def mouseDoubleClickEvent(self, event):
-        """
-        鼠标双击事件
-        :param event:
-        :return:
-        """
         if event.button() == Qt.LeftButton:
-            self._double_click = not self._double_click
-            self.doubleClicked.emit(self._double_click)
+            self.doubleClicked.emit()
         QPushButton.mouseDoubleClickEvent(self, event)
-
-    def setDoubleClicked(self, double_clicked):
-        """
-        设置是否双击
-        :param double_clicked:
-        :return:
-        """
-        self._double_click = double_clicked
 
 
 class _CollapsibleBox(QWidget):
-    """
-    折叠控件
-            + 折叠控件
-                ||
-            - 折叠控件
-            |- 控件01
-            |- 控件02
-    """
+    """骨骼折叠面板：标题单击选择、双击展开，滚动交给外层列表。"""
     item_clicked = Signal(str)
+    add_pose_requested = Signal()
 
     def __init__(self, title = "", icon_path = None, parent = None, animation_duration = 300):
-        """
-        初始化
-        :param title: 标题
-        :param parent: 父对象
-        :param animation_duration: 动画时间
-        """
         QWidget.__init__(self, parent)
-        self.animation_duration = animation_duration
-        # 创建QToolButton用于激活下拉，双击下拉时激活折叠动画
-        self.toggle_button = _ToolButton(title)
+        self.animation_duration = max(0, int(animation_duration))
+        self._expanded = False
+        self._content_height = 0
+        self._natural_height = 0
+        self._selected_pose_key = None
+        self._pose_rows = {}
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.toggle_button = _ToolButton(title, self)
         if icon_path:
             self.toggle_button.setIcon(QIcon(icon_path))
-        # 点击激活self.on_pressed
         self.toggle_button.doubleClicked.connect(self.on_pressed)
-        # 并行动画容器组。在它启动时将启动组内所有动画，即并行运行所有动画。当持续时间最长的动画结束时，动画组结束。
-        self.toggle_animation = QParallelAnimationGroup()
-        # QScrollArea滚动控件
-        self.content_area = QScrollArea(maximumHeight = 0, minimumHeight = 0)
-        # 设置水平与垂直大小调整策略，QSizePolicy类用于描述一个窗口小部件如何在布局中调整自己的大小。
-        # QSizePolicy.Expanding 用于指示窗口小部件在布局中有能力并且愿意扩展以填充可用空间。
-        # QSizePolicy.Fixed 用于指示窗口小部件应该保持其固定大小，不应进行任何扩展或收缩。
-        self.content_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # 取消边框
-        self.content_area.setFrameShape(QFrame.NoFrame)
-        # 设置动画QPropertyAnimation(QObject target, QByteArray propertyName, QObject parent)
-        # target为准备进行动画动作的对象，可以不填，不填时动画对象创建后要使用setTargetObject来设置动作对象；
-        # propertyName为动作对象变更的属性，可以不填，不填时动画对象创建并设置动画动作的对象要使用setPropertyName来设置变更的属性.
-        # parent为动作对象的父对象，可以不填，不填默认为None。
-        # 将动画添加到动画组中，分别控制控件最小高度、最大高度和内容区域最大高度
-        self.toggle_animation.addAnimation(QPropertyAnimation(self, b"minimumHeight"))
-        self.toggle_animation.addAnimation(QPropertyAnimation(self, b"maximumHeight"))
-        self.toggle_animation.addAnimation(QPropertyAnimation(self.content_area, b"maximumHeight"))
-        # 构建布局
-        self.main_layout = QVBoxLayout()
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-        self.main_layout.addWidget(self.toggle_button)
-        self.main_layout.addWidget(self.content_area)
-        self.setLayout(self.main_layout)
+        self.toggle_button.setToolTip("单击选择集合，双击展开或收起")
+        self.add_pose_button = IconButton(IconPath.PLUS_PATH.value, 14, margin=3)
+        self.add_pose_button.setToolTip("添加姿态到此集合")
+        self.add_pose_button.clicked.connect(self.add_pose_requested.emit)
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(2)
+        header_layout.addWidget(self.toggle_button, 1)
+        header_layout.addWidget(self.add_pose_button)
 
-        self.item_layout = QVBoxLayout()
+        # 外容器只负责裁剪，内控件保持完整高度，避免动画中挤压姿态行。
+        self.content_area = QWidget(self)
+        self.content_area.setFixedHeight(0)
+        self.content_widget = QWidget(self.content_area)
+        self.item_layout = QVBoxLayout(self.content_widget)
         self.item_layout.setAlignment(Qt.AlignTop)
         self.item_layout.setContentsMargins(0, 0, 0, 0)
         self.item_layout.setSpacing(2)
-        # self.setContentLayout(self.item_layout)
-        # for i in range(10):
-        #     self.addItem(_ListItemWidget(f"item {i}", icon_path = IconPath.DELETE_PATH.value))
+        self.item_layout.setSizeConstraint(QLayout.SetNoConstraint)
+        self.content_area.installEventFilter(self)
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        self.main_layout.setSizeConstraint(QLayout.SetNoConstraint)
+        self.main_layout.addLayout(header_layout)
+        self.main_layout.addWidget(self.content_area)
+        self.setFixedHeight(self.toggle_button.height())
+        self.toggle_animation = QPropertyAnimation(self, b"contentHeight", self)
+        self.toggle_animation.setEasingCurve(QEasingCurve.InOutCubic)
+
+    def isExpanded(self):
+        return self._expanded
+
+    def setExpanded(self, expanded, animate = True):
+        """展开与标题选中状态独立；空列表也保留展开意图。"""
+        self._expanded = bool(expanded)
+        self._syncContentHeight(animate)
 
     @Slot()
-    def on_pressed(self, checked):
-        """
-        播放动画
-        :return:
-        """
-        direction = QAbstractAnimation.Forward if checked else QAbstractAnimation.Backward
-        self.toggle_animation.setDirection(direction)
+    def on_pressed(self):
+        self.setExpanded(not self._expanded)
+
+    def _getContentHeight(self):
+        return self._content_height
+
+    def _setContentHeight(self, height):
+        self._content_height = max(0, int(height))
+        self.content_area.setFixedHeight(self._content_height)
+        self.setFixedHeight(self.toggle_button.height() + self._content_height)
+
+    contentHeight = Property(int, _getContentHeight, _setContentHeight)
+
+    def _syncContentHeight(self, animate = True):
+        # 当前姿态行固定高度，直接测量行，避免依赖尚未处理的布局事件。
+        count = self.item_layout.count()
+        margins = self.item_layout.contentsMargins()
+        self._natural_height = margins.top() + margins.bottom()
+        for i in range(count):
+            self._natural_height += self.item_layout.itemAt(i).widget().height()
+        self._natural_height += max(0, count - 1) * self.item_layout.spacing()
+        self.content_widget.setGeometry(0, 0, self.content_area.width(), self._natural_height)
+        self.item_layout.invalidate()
+        self.item_layout.activate()
+
+        self.toggle_animation.stop()
+        target = self._natural_height if self._expanded else 0
+        if (not animate or not self.isVisible() or not self.animation_duration
+                or target == self._content_height):
+            self._setContentHeight(target)
+            return
+        # 快速反向或刷新时，从当前可见高度继续，避免跳回旧端点。
+        self.toggle_animation.setDuration(self.animation_duration)
+        self.toggle_animation.setStartValue(self._content_height)
+        self.toggle_animation.setEndValue(target)
         self.toggle_animation.start()
 
-    def setContentLayout(self, layout = None):
-        """
-        添加布局
-        :param layout: 布局
-        :return:
-        """
-        # 销毁QScrollArea的子部件
-        self.content_area.destroy()
-        # 添加布局
-        self.content_area.setLayout(layout)
-        # 计算折叠和展开时的高度
-        # 计算折叠时的高度(总高度减去内容高度)
-        collapsed_height = (self.sizeHint().height() - self.content_area.maximumHeight())
-        # 计算内容区域的高度
-        content_height = layout.sizeHint().height()
-        # 更新动画的开始值和结束值
-        for i in range(self.toggle_animation.animationCount()):
-            # 设置动画值
-            animation = self.toggle_animation.animationAt(i)
-            animation.setDuration(self.animation_duration)
-            animation.setStartValue(collapsed_height)
-            animation.setEndValue(collapsed_height + content_height)
-        content_animation = self.toggle_animation.animationAt(self.toggle_animation.animationCount() - 1)
-        content_animation.setDuration(self.animation_duration)
-        content_animation.setStartValue(0)
-        content_animation.setEndValue(content_height)
+    def eventFilter(self, watched, event):
+        if watched is self.content_area and event.type() == QEvent.Resize:
+            self.content_widget.resize(self.content_area.width(), self._natural_height)
+        return QWidget.eventFilter(self, watched, event)
 
-    def addItem(self, key, name, icon_path = None):
-        """
-        添加子项
-        :param key: 键
-        :param name: 名称
-        :param icon_path: 图标路径
-        :return:
-        """
-        item = _ListItemWidget(name, icon_path)
+    def _appendItem(self, key, name, icon_path):
+        item = _ListItemWidget(name, icon_path, self.content_widget)
+        self._pose_rows[key] = item
+        item.setSelected(key == self._selected_pose_key)
         item.clicked.connect(lambda: self.item_clicked.emit(key))
         self.item_layout.addWidget(item)
-        # self.setContentLayout(self.item_layout)
+        item.show()
+
+    def setSelectedPose(self, key):
+        self._selected_pose_key = key
+        for pose_key, row in self._pose_rows.items():
+            row.setSelected(pose_key == key)
+
+    def addItem(self, key, name, icon_path = None):
+        """添加单条姿态，并按当前展开状态更新高度。"""
+        self._appendItem(key, name, icon_path)
+        self._syncContentHeight()
 
     def updateItems(self, item):
-        """
-        更新子项
-        :param item: 子项
-        :return:
-        """
-        self.clearItems()
+        """批量替换后只更新一次高度，保留展开及标题选中状态。"""
+        self._clearItems()
         for key, name, icon_path in item:
-            self.addItem(key, name, icon_path)
-        self.setContentLayout(self.item_layout)
+            self._appendItem(key, name, icon_path)
+        self._syncContentHeight()
+
+    def _clearItems(self):
+        # 立即移出布局，延迟释放 QObject；后续测量不会再包含旧行。
+        self._pose_rows.clear()
+        while self.item_layout.count():
+            item = self.item_layout.takeAt(0).widget()
+            item.hide()
+            item.deleteLater()
 
     def clearItems(self):
-        """
-        清空子项
-        :return:
-        """
-        for i in range(self.item_layout.count()):
-            self.item_layout.itemAt(i).widget().deleteLater()
+        """清空后保留展开意图，再次添加时可自动显示。"""
+        self._clearItems()
+        self._syncContentHeight()
 
 
 class _ListItemWidget(QWidget):
@@ -841,6 +829,11 @@ class _ListItemWidget(QWidget):
         self.main_layout.addWidget(self.text_label)
 
         self._state = self.NORMAL
+        self._selected = False
+
+    def setSelected(self, selected):
+        self._selected = bool(selected)
+        self.update()
 
     def setState(self, enum):
         """
@@ -897,7 +890,9 @@ class _ListItemWidget(QWidget):
         :return:
         """
         background_color = QColor(55, 62, 59)
-        if self._state == self.HOVER:
+        if self._selected:
+            background_color = QColor(65, 90, 75)
+        elif self._state == self.HOVER:
             background_color = QColor(58, 70, 63)
         elif self._state == self.PRESS:
             background_color = QColor(51, 63, 56)
@@ -958,6 +953,7 @@ class _JPlistWidget(QScrollArea):
     """
     joint_pressed = Signal(str)
     item_clicked = Signal(list)
+    add_pose_requested = Signal(str)
 
     def __init__(self, parent = None):
         """
@@ -974,51 +970,86 @@ class _JPlistWidget(QScrollArea):
         self.main_layout.setSpacing(2)
         self.setWidget(self.main_widget)
         self.button_group = _EButtonGroup(self)
+        self.button_group.buttonClicked.connect(self._onJointClicked)
+        self._items_by_key = {}
+
+    def _onJointClicked(self, button):
+        self.joint_pressed.emit(button.property("joint_key"))
+
+    def setSelection(self, joint_key=None, pose_key=None):
+        self.button_group.current_checked_button = None
+        for key, box in self._items_by_key.items():
+            selected = key == joint_key
+            box.toggle_button.setChecked(selected)
+            if selected:
+                self.button_group.current_checked_button = box.toggle_button
+            box.setSelectedPose(pose_key if selected else None)
 
     def addJointItem(self, key, joint_name, icon_path = None):
         """
-        添加骨骼项
-        :param key: 第几项
+        添加骨骼项；已有 key 只更新标题和图标，不清空姿态。
+        :param key: 骨骼唯一标识
         :param joint_name: 骨骼名称
         :param icon_path: 图标路径
         :return:
         """
-        item = _CollapsibleBox(joint_name, icon_path)
-        self.button_group.addButton(item.toggle_button)
-        item.toggle_button.clicked.connect(lambda: self.joint_pressed.emit(key))
-        item.item_clicked.connect(lambda x: self.item_clicked.emit([key, x]))
-        self.main_layout.addWidget(item)
+        item = self._items_by_key.get(key)
+        if item is None:
+            item = _CollapsibleBox(joint_name, icon_path, self.main_widget)
+            self._items_by_key[key] = item
+            item.toggle_button.setProperty("joint_key", key)
+            self.button_group.addButton(item.toggle_button)
+            item.item_clicked.connect(lambda x: self.item_clicked.emit([key, x]))
+            item.add_pose_requested.connect(lambda: self.add_pose_requested.emit(key))
+            self.main_layout.addWidget(item)
+            item.show()
+        item.toggle_button.setText(joint_name)
+        item.toggle_button.setIcon(QIcon(icon_path) if icon_path else QIcon())
+        return item
 
     def updateItems(self, item):
         """
-        更新项
-        :param item: 项
-        :return:
+        按 key 同步骨骼及顺序，保留已有面板的姿态、展开和选中状态。
+        :param item: (key, joint_name, icon_path) 列表
         """
-        self.clearItems()
-        for key, joint_name, icon_path in item:
-            self.addJointItem(key, joint_name, icon_path)
+        items = list(item)
+        keys = [key for key, joint_name, icon_path in items]
+        desired_keys = set(keys)
+        if len(desired_keys) != len(keys):
+            raise ValueError("Joint keys must be unique")
+        for key in list(self._items_by_key):
+            if key not in desired_keys:
+                old_item = self._items_by_key.pop(key)
+                self.main_layout.removeWidget(old_item)
+                self.button_group.removeButton(old_item.toggle_button)
+                old_item.hide()
+                old_item.deleteLater()
+        for index, (key, joint_name, icon_path) in enumerate(items):
+            joint_item = self.addJointItem(key, joint_name, icon_path)
+            self.main_layout.insertWidget(index, joint_item)
 
     def clearItems(self):
         """
         清空项
         :return:
         """
-        for i in range(self.main_layout.count()):
-            self.button_group.removeButton(self.main_layout.itemAt(i).widget().toggle_button)
-            self.main_layout.itemAt(i).widget().deleteLater()
+        self._items_by_key.clear()
+        while self.main_layout.count():
+            item = self.main_layout.takeAt(0).widget()
+            self.button_group.removeButton(item.toggle_button)
+            item.hide()
+            item.deleteLater()
 
     def updateChildItems(self, key, item):
         """
         更新子项
-        :param key: 第几项
+        :param key: 骨骼唯一标识，与显示名称无关
         :param item: 子项
         :return:
         """
-        for i in range(self.main_layout.count()):
-            if self.main_layout.itemAt(i).widget().toggle_button.text() == key:
-                self.main_layout.itemAt(i).widget().updateItems(item)
-                break
+        joint_item = self._items_by_key.get(key)
+        if joint_item is not None:
+            joint_item.updateItems(item)
 
 
 class _ShapeListWidget(QScrollArea):
@@ -1081,7 +1112,9 @@ class ListWidget(QWidget):
     on_joint_pressed = Signal(list)
     add_click = Signal()
     delete_click = Signal(str)
-    add_joint_click = Signal(str)
+    add_joint_click = Signal()
+    add_pose_click = Signal(str)
+    selection_changed = Signal(object)
     delete_joint_click = Signal(list)
 
     def __init__(self, title, parent = None):
@@ -1127,7 +1160,12 @@ class ListWidget(QWidget):
         添加骨骼与POSE列表
         :return:
         """
-        self._add_button.clicked.connect(lambda : self.add_joint_click.emit(self._now_joint_key))
+        if hasattr(self, "jplist_widget"):
+            return
+        self._add_button.clicked.connect(self.add_joint_click.emit)
+        self._add_button.setToolTip("添加骨骼集合")
+        self._delete_button.setToolTip("删除选中的集合或姿态")
+        self._delete_button.setEnabled(False)
         self._delete_button.clicked.connect(self._sendDeleteJointSignal)
         self._now_joint_key = None
         self._now_joint_child_key = None
@@ -1136,6 +1174,14 @@ class ListWidget(QWidget):
         self.jplist_widget.joint_pressed.connect(self._setNowJointKey)
         self.jplist_widget.item_clicked.connect(self._setNowJointChildKey)
         self.jplist_widget.item_clicked.connect(self.on_joint_pressed.emit)
+        self.jplist_widget.add_pose_requested.connect(self.add_pose_click.emit)
+
+    def setSelection(self, joint_key=None, pose_key=None):
+        self._now_joint_key = joint_key
+        self._now_joint_child_key = pose_key if joint_key is not None else None
+        self.jplist_widget.setSelection(joint_key, self._now_joint_child_key)
+        self._delete_button.setEnabled(joint_key is not None)
+        self.selection_changed.emit((joint_key, self._now_joint_child_key))
 
     def _setNowJointChildKey(self, key):
         """
@@ -1143,16 +1189,15 @@ class ListWidget(QWidget):
         :param key:
         :return:
         """
-        self._now_joint_key, self._now_joint_child_key = key
+        self.setSelection(*key)
 
     def _sendDeleteJointSignal(self):
         """
         发送删除骨骼信号
         :return:
         """
-        self.delete_joint_click.emit([self._now_joint_key, self._now_joint_child_key])
-        self._now_joint_key = None
-        self._now_joint_child_key = None
+        if self._now_joint_key is not None:
+            self.delete_joint_click.emit([self._now_joint_key, self._now_joint_child_key])
 
     def _setNowJointKey(self, key):
         """
@@ -1160,10 +1205,10 @@ class ListWidget(QWidget):
         :param key:
         :return:
         """
-        if self._now_joint_key == key:
-            self._now_joint_key = None
+        if self._now_joint_key == key and self._now_joint_child_key is None:
+            self.setSelection()
         else:
-            self._now_joint_key = key
+            self.setSelection(key)
 
     def _setNowItemKey(self, key):
         """
